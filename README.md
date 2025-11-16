@@ -1,481 +1,522 @@
 # Pi Camera Service
 
-Micro-service **FastAPI** pour contrôler une caméra Raspberry Pi (libcamera / Picamera2)
+Micro-service **FastAPI** production-ready pour contrôler une caméra Raspberry Pi (libcamera / Picamera2)
 et diffuser un flux **H.264** vers **MediaMTX** via **RTSP**.
 
-Ce service tourne **sur le Raspberry Pi**, prend le contrôle de la caméra (par ex. Raspberry Pi Camera Module v3),
-et expose une **API HTTP** permettant de :
+Version **1.0** - Refactorisé avec best practices modernes, tests complets, et documentation exhaustive.
 
-- lancer / arrêter le streaming vers MediaMTX,
-- activer / désactiver l’auto-exposition,
-- passer en exposition manuelle (temps d’expo + gain),
-- activer / désactiver l’auto white balance (AWB),
-- récupérer l’état courant de la caméra (lux, expo, gain, température de couleur…).
+---
+
+## 🚀 Démarrage Rapide
+
+```bash
+# Installation complète (voir SETUP.md pour les détails)
+./install-service.sh
+
+# Tester que tout fonctionne
+./test-api.sh
+
+# Accéder au stream RTSP
+# VLC: rtsp://<IP_DU_PI>:8554/cam
+```
+
+📖 **Documentation complète** : Voir [SETUP.md](SETUP.md) pour l'installation pas à pas.
+
+---
+
+## ✨ Fonctionnalités
+
+Ce service tourne **sur le Raspberry Pi**, prend le contrôle de la caméra (par ex. Raspberry Pi Camera Module v3),
+et expose une **API HTTP REST** permettant de :
+
+- ✅ Lancer / arrêter le streaming RTSP vers MediaMTX
+- ✅ Activer / désactiver l'auto-exposition
+- ✅ Passer en exposition manuelle (temps d'expo + gain)
+- ✅ Activer / désactiver l'auto white balance (AWB)
+- ✅ Récupérer l'état courant de la caméra (lux, expo, gain, température de couleur…)
+- ✅ Authentification API par clé (optionnelle)
+- ✅ Démarrage automatique au boot (systemd)
+- ✅ Tests d'intégration complets
 
 Le flux vidéo est publié vers MediaMTX, qui se charge ensuite de le servir
 en **RTSP / WebRTC / HLS**, etc.
 
 ---
 
-## 1. Architecture
+## 📐 Architecture
 
-Schéma logique :
+```
+Pi Camera v3  ──>  Picamera2 / libcamera  ──>  H.264 encoder  ──>  MediaMTX (RTSP, WebRTC, HLS...)
+                         ▲                         ▲
+                         │                         │
+                  Pi Camera Service API (FastAPI)  │
+                         ▲                         │
+                   App externe (backend, UI...) ───┘
+```
 
-    Pi Camera v3  ──>  Picamera2 / libcamera  ──>  H.264 encoder  ──>  MediaMTX (RTSP, WebRTC, HLS...)
-                             ▲                         ▲
-                             │                         │
-                      Pi Camera Service API (FastAPI)  │
-                             ▲                         │
-                       App externe (backend, UI...) ───┘
+**Composants** :
+- **Pi Camera Service** : ce projet, tournant sur le Pi
+- **Picamera2** : librairie Python pour piloter libcamera
+- **MediaMTX** : serveur de streaming multiprotocole
+- **Application externe** : consomme le flux via MediaMTX et pilote la caméra via HTTP
 
-- **Pi Camera Service** : ce projet, tournant sur le Pi.
-- **Picamera2** : librairie Python pour piloter libcamera.
-- **MediaMTX** : serveur de streaming (RTSP / WebRTC / HLS).
-- **Application externe** : consomme le flux via MediaMTX et pilote la caméra via HTTP.
-
-## 2. Prérequis
-
-### 2.1. Matériel
-
-- Raspberry Pi (Pi 4 ou Pi 5 recommandé pour l’encodage H.264).
-- Caméra compatible libcamera (par exemple : Raspberry Pi Camera Module v3).
-
-### 2.2. Paquets système (Raspberry Pi)
-
-Sur le Pi :
-
-    sudo apt update
-    sudo apt install -y \
-      git \
-      python3-venv \
-      python3-picamera2 \
-      python3-libcamera \
-      libcamera-apps \
-      ffmpeg
-
-Ces paquets fournissent notamment :
-
-- `python3-picamera2` / `python3-libcamera` : interface caméra en Python,
-- `libcamera-apps` : outils `rpicam-*` (debug/validation),
-- `ffmpeg` : utilisé par `FfmpegOutput` (Picamera2),
-- `python3-venv` : gestion des environnements virtuels,
-- `git` : gestion de version.
-
-Assure-toi également que **MediaMTX** est installé et fonctionne sur le Pi
-(fichier de configuration `mediamtx.yml` disponible).
-
-## 3. Installation du projet
-
-### 3.1. Cloner le dépôt
-
-Sur le Raspberry Pi :
-
-    cd ~
-    git clone https://github.com/<TON_USER>/pi-camera-service.git
-    cd pi-camera-service
-
-Remplace `<TON_USER>` par ton nom d’utilisateur GitHub.
-
-### 3.2. Créer et activer l’environnement virtuel
-
-    python3 -m venv venv
-    source venv/bin/activate
-
-Tu devrais voir `(venv)` au début du prompt.
-
-### 3.3. Installer les dépendances Python
-
-#### Option A – À partir de `requirements.txt`
-
-    pip install --upgrade pip
-    pip install -r requirements.txt
-
-#### Option B – Installation minimale (si tu reconstruis le projet)
-
-Le projet nécessite au minimum :
-
-- `fastapi`
-- `uvicorn[standard]`
-- `pydantic`
-
-Installation rapide :
-
-    pip install --upgrade pip
-    pip install "fastapi>=0.110" "uvicorn[standard]>=0.27" "pydantic>=2.0"
-
-Note : la librairie **Picamera2** est fournie par le paquet APT `python3-picamera2`
-et non par `pip`.
-
-## 4. Configuration MediaMTX
-
-Le service pousse un flux H.264 vers MediaMTX sur l’URL RTSP suivante :
-
-- `rtsp://127.0.0.1:8554/cam`
-
-Dans `mediamtx.yml` (sur le Pi), il faut déclarer le path `cam` comme **source publisher** :
-
-    paths:
-      cam:
-        source: publisher
-        # auth / options supplémentaires possibles ici
-
-Important :
-
-- ne **pas** utiliser `source: rpiCamera` sur ce path,
-- sinon MediaMTX essaiera d’ouvrir directement la caméra et entrera en conflit
-  avec le Pi Camera Service.
-
-Redémarre MediaMTX après modification de la configuration.
+**Technologies** :
+- FastAPI avec lifespan context manager moderne
+- Pydantic BaseSettings pour configuration type-safe
+- Threading avec RLock pour thread-safety
+- Logging structuré
+- Tests pytest + tests d'intégration
 
 ---
 
-## 5. Configuration du service (camera_service/config.py)
+## 📋 Prérequis
 
-Le fichier `camera_service/config.py` contient les paramètres par défaut :
+### Matériel
+- Raspberry Pi (Pi 4 ou Pi 5 recommandé pour l'encodage H.264)
+- Caméra compatible libcamera (ex: Raspberry Pi Camera Module v3)
 
-    from dataclasses import dataclass
-
-
-    @dataclass
-    class CameraConfig:
-        width: int = 1920
-        height: int = 1080
-        framerate: int = 30
-        bitrate: int = 8_000_000  # bits/s pour H.264
-        rtsp_url: str = "rtsp://127.0.0.1:8554/cam"
-        enable_awb: bool = True
-        default_auto_exposure: bool = True
-
-
-    CONFIG = CameraConfig()
-
-Principaux paramètres :
-
-- `width` / `height` : résolution de la sortie vidéo,
-- `framerate` : nombre d’images par seconde,
-- `bitrate` : bitrate H.264 (en bits/s),
-- `rtsp_url` : URL RTSP de publication vers MediaMTX,
-- `enable_awb` : active l’auto white balance à l’initialisation,
-- `default_auto_exposure` : active l’auto-exposition au démarrage.
-
-
-## 6. Lancement du service
-
-### 6.1. Démarrage manuel
-
-Dans le répertoire du projet :
-
-    cd ~/pi-camera-service
-    source venv/bin/activate
-    python main.py
-
-Par défaut, l’API écoute sur :
-
-- `http://0.0.0.0:8000`
-
-Au démarrage :
-
-1. `CameraController` configure la caméra via Picamera2.
-2. `StreamingManager` démarre l’encodage H.264.
-3. Le flux est poussé vers `CONFIG.rtsp_url` (MediaMTX).
-
-### 6.2. Vérifier le flux RTSP
-
-Depuis un autre PC, avec VLC :
-
-1. Menu « Média → Ouvrir un flux réseau… »
-2. URL : `rtsp://<IP_DU_PI>:8554/cam`
+### Logiciel
+- Raspberry Pi OS (Bookworm ou plus récent)
+- Python 3.9+
+- MediaMTX installé et configuré
 
 ---
 
-## 7. API HTTP – Endpoints
+## 📦 Installation
 
-Base URL de l’API :
+### Installation Rapide
 
-- `http://<IP_DU_PI>:8000`
+Suivez le guide complet dans [SETUP.md](SETUP.md) :
 
-### 7.1. GET `/camera/status`
+```bash
+# 1. Installer les dépendances système
+sudo apt update
+sudo apt install -y python3-venv python3-picamera2 python3-libcamera libcamera-apps ffmpeg git
 
-Retourne un snapshot de l’état courant de la caméra.
+# 2. Cloner le projet
+git clone <votre-repo-url> ~/pi-camera-service
+cd ~/pi-camera-service
 
-Exemple de réponse 200 :
+# 3. Créer l'environnement virtuel (IMPORTANT: avec --system-site-packages)
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
 
-    {
-      "lux": 45.2,
-      "exposure_us": 12000,
-      "analogue_gain": 1.5,
-      "colour_temperature": 4200.0,
-      "auto_exposure": true,
-      "streaming": true
-    }
+# 4. Installer les dépendances
+pip install --upgrade pip
+pip install -r requirements.txt
 
-Champs :
+# 5. Installer le service systemd
+./install-service.sh
+```
 
-- `lux` : estimation de la luminosité de la scène (si disponible),
-- `exposure_us` : temps d’exposition actuel (µs),
-- `analogue_gain` : gain analogique actuel,
-- `colour_temperature` : température de couleur estimée (K),
-- `auto_exposure` : `true` si l’auto-exposition est active,
-- `streaming` : `true` si le flux vers MediaMTX est actif.
-
----
-
-### 7.2. POST `/camera/auto_exposure`
-
-Active ou désactive l’auto-exposition.
-
-Corps JSON :
-
-    {
-      "enabled": true
-    }
-
-- `enabled` (`bool`) :
-  - `true` : auto-exposition activée (`AeEnable = True` + `ExposureTime = 0`),
-  - `false` : auto-exposition désactivée (`AeEnable = False`).
-
-Réponse 200 :
-
-    {
-      "status": "ok",
-      "auto_exposure": true
-    }
+> **⚠️ Important** : L'environnement virtuel DOIT être créé avec `--system-site-packages`
+> pour accéder à picamera2 qui est installé via APT.
 
 ---
 
-### 7.3. POST `/camera/manual_exposure`
+## ⚙️ Configuration
 
-Passe la caméra en exposition manuelle.
+### Variables d'Environnement
 
-Corps JSON :
+Le service utilise des variables d'environnement avec le préfixe `CAMERA_`.
 
-    {
-      "exposure_us": 20000,
-      "gain": 2.0
-    }
+Créer un fichier `.env` (optionnel) :
 
-- `exposure_us` (`int`, obligatoire, > 0) : temps d’expo en microsecondes,
-- `gain` (`float`, optionnel, > 0) : gain analogique (par défaut 1.0).
+```bash
+cp .env.example .env
+nano .env
+```
 
-Effets :
+**Principales variables** :
 
-- `AeEnable` est mis à `False`,
-- `ExposureTime` et `AnalogueGain` sont fixés aux valeurs fournies.
+```bash
+# Résolution et qualité vidéo
+CAMERA_WIDTH=1920
+CAMERA_HEIGHT=1080
+CAMERA_FRAMERATE=30
+CAMERA_BITRATE=8000000
 
-Réponse 200 :
+# Serveur API
+CAMERA_HOST=0.0.0.0
+CAMERA_PORT=8000
 
-    {
-      "status": "ok",
-      "exposure_us": 20000,
-      "gain": 2.0
-    }
+# Authentification (optionnelle)
+CAMERA_API_KEY=votre-clé-secrète
 
-Réponse 400 (exemple de valeurs invalides) :
+# URL RTSP MediaMTX
+CAMERA_RTSP_URL=rtsp://127.0.0.1:8554/cam
 
-    {
-      "detail": "exposure_us doit être > 0"
-    }
+# Logging
+CAMERA_LOG_LEVEL=INFO
+```
 
----
+### Configuration MediaMTX
 
-### 7.4. POST `/camera/awb`
+Dans `mediamtx.yml`, déclarer le path `cam` comme **publisher** :
 
-Active ou désactive l’auto white balance (AWB).
+```yaml
+paths:
+  cam:
+    source: publisher
+```
 
-Corps JSON :
-
-    {
-      "enabled": false
-    }
-
-- `enabled` (`bool`) :
-  - `true` : `AwbEnable = True`,
-  - `false` : `AwbEnable = False`.
-
-Réponse 200 :
-
-    {
-      "status": "ok",
-      "awb_enabled": false
-    }
+> ⚠️ **Ne PAS utiliser** `source: rpiCamera` (conflit avec ce service)
 
 ---
 
-### 7.5. POST `/streaming/start`
+## 🚀 Utilisation
 
-Démarre le streaming H.264 → MediaMTX (si ce n’est pas déjà actif).
+### Démarrage Manuel
 
-Réponse 200 :
+```bash
+cd ~/pi-camera-service
+source venv/bin/activate
+python main.py
+```
 
-    {
-      "status": "ok",
-      "streaming": true
-    }
+L'API sera disponible sur `http://0.0.0.0:8000`
 
----
+### Service Systemd (Production)
 
-### 7.6. POST `/streaming/stop`
+```bash
+# Démarrer
+sudo systemctl start pi-camera-service
 
-Arrête le streaming H.264 → MediaMTX (si actif).
+# Arrêter
+sudo systemctl stop pi-camera-service
 
-Réponse 200 :
+# Redémarrer
+sudo systemctl restart pi-camera-service
 
-    {
-      "status": "ok",
-      "streaming": false
-    }
+# Voir les logs
+sudo journalctl -u pi-camera-service -f
+```
 
-## 8. Exemples d’utilisation (curl)
-
-Remplace `<IP_DU_PI>` par l’adresse IP réelle du Raspberry Pi.
-
-### 8.1. Lire l’état de la caméra
-
-    curl http://<IP_DU_PI>:8000/camera/status
-
-### 8.2. Activer l’auto-exposition
-
-    curl -X POST http://<IP_DU_PI>:8000/camera/auto_exposure \
-      -H "Content-Type: application/json" \
-      -d '{"enabled": true}'
-
-### 8.3. Passer en manuel (20 ms, gain 2.0)
-
-    curl -X POST http://<IP_DU_PI>:8000/camera/manual_exposure \
-      -H "Content-Type: application/json" \
-      -d '{"exposure_us": 20000, "gain": 2.0}'
-
-### 8.4. Désactiver l’AWB
-
-    curl -X POST http://<IP_DU_PI>:8000/camera/awb \
-      -H "Content-Type: application/json" \
-      -d '{"enabled": false}'
-
-### 8.5. Démarrer / arrêter le streaming
-
-    curl -X POST http://<IP_DU_PI>:8000/streaming/stop
-    curl -X POST http://<IP_DU_PI>:8000/streaming/start
+📖 Voir [SERVICE-SETUP.md](SERVICE-SETUP.md) pour la documentation complète du service.
 
 ---
 
-## 9. Exemple de client Python
+## 📡 API HTTP - Endpoints
 
-Exemple minimal côté application externe :
+**Base URL** : `http://<IP_DU_PI>:8000`
 
-    import requests
+### Santé du Service
 
-    PI_HOST = "http://raspberrypi:8000"  # ou http://<IP_DU_PI>:8000
+**GET** `/health`
+```json
+{
+  "status": "healthy",
+  "camera_configured": true,
+  "streaming_active": true,
+  "version": "1.0.0"
+}
+```
 
+### Statut de la Caméra
 
-    def get_status():
-        resp = requests.get(f"{PI_HOST}/camera/status", timeout=2)
-        resp.raise_for_status()
-        return resp.json()
+**GET** `/v1/camera/status`
+```json
+{
+  "lux": 45.2,
+  "exposure_us": 12000,
+  "analogue_gain": 1.5,
+  "colour_temperature": 4200.0,
+  "auto_exposure": true,
+  "streaming": true
+}
+```
 
+### Contrôle de l'Exposition
 
-    def set_auto_exposure(enabled: bool = True):
-        resp = requests.post(
-            f"{PI_HOST}/camera/auto_exposure",
-            json={"enabled": enabled},
-            timeout=2,
-        )
-        resp.raise_for_status()
-        return resp.json()
+**POST** `/v1/camera/auto_exposure`
+```json
+{"enabled": true}
+```
 
+**POST** `/v1/camera/manual_exposure`
+```json
+{
+  "exposure_us": 20000,
+  "gain": 2.0
+}
+```
 
-    def set_manual_exposure(exposure_us: int, gain: float = 1.0):
-        resp = requests.post(
-            f"{PI_HOST}/camera/manual_exposure",
-            json={"exposure_us": exposure_us, "gain": gain},
-            timeout=2,
-        )
-        resp.raise_for_status()
-        return resp.json()
+### Balance des Blancs
 
+**POST** `/v1/camera/awb`
+```json
+{"enabled": false}
+```
 
-    if __name__ == "__main__":
-        print("Status avant :", get_status())
-        print("Passage en manuel :", set_manual_exposure(20000, 2.0))
-        print("Status après :", get_status())
+### Contrôle du Streaming
 
----
+**POST** `/v1/streaming/start`
+**POST** `/v1/streaming/stop`
 
-## 10. Lancer le service au démarrage (systemd)
-
-Pour la production, tu peux créer un service `systemd` pour démarrer automatiquement
-le Pi Camera Service au boot du Pi.
-
-### 10.1. Unité systemd
-
-Créer `/etc/systemd/system/pi-camera-service.service` :
-
-    [Unit]
-    Description=Pi Camera Service (FastAPI + Picamera2)
-    After=network.target
-
-    [Service]
-    User=pi
-    WorkingDirectory=/home/pi/pi-camera-service
-    ExecStart=/home/pi/pi-camera-service/venv/bin/python /home/pi/pi-camera-service/main.py
-    Restart=always
-    RestartSec=3
-
-    [Install]
-    WantedBy=multi-user.target
-
-Adapte `User` et les chemins si ton user n’est pas `pi`.
-
-### 10.2. Activer et démarrer le service
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable pi-camera-service.service
-    sudo systemctl start pi-camera-service.service
-    sudo systemctl status pi-camera-service.service
+📖 **Documentation API complète** : Voir [API.md](API.md)
 
 ---
 
-## 11. Dépannage
+## 🧪 Tests
 
-### 11.1. Caméra non détectée
+### Tests d'Intégration API
 
-Test rapide :
+Vérifier que tout fonctionne correctement :
 
-    rpicam-hello --list-cameras
+```bash
+# Le service doit être démarré
+./test-api.sh
+```
 
-Si aucune caméra n’apparaît :
+**Sortie attendue** :
+```
+✓ All tests passed! Your Pi Camera Service is working correctly.
+```
 
-- vérifier le câble et le connecteur,
-- vérifier la configuration caméra dans Raspberry Pi OS (libcamera est utilisé par défaut
-  sur les versions récentes).
+### Tous les Tests
 
-### 11.2. Erreurs `ModuleNotFoundError: picamera2`
+```bash
+# Tests unitaires
+pytest tests/ --ignore=tests/test_api_integration.py
 
-- vérifier le paquet :
+# Tests d'intégration (service doit tourner)
+pytest tests/test_api_integration.py -v
 
-      dpkg -l | grep picamera2
+# Tous les tests
+pytest tests/ -v
+```
 
-- s’assurer que tu lances le service avec le bon Python :
-  l’interpréteur du venv basé sur `python3` du système.
-
-### 11.3. Pas d’image en RTSP
-
-- vérifier le statut de l’API :
-
-      curl http://<IP_DU_PI>:8000/camera/status
-
-- vérifier que MediaMTX tourne :
-
-      systemctl status mediamtx
-
-- consulter les logs :
-
-      sudo journalctl -u mediamtx -f
-      sudo journalctl -u pi-camera-service -f
+📖 Voir [TESTING.md](TESTING.md) pour le guide complet des tests.
 
 ---
 
-## 12. Licence
+## 📚 Documentation
 
-À compléter selon ton choix (MIT, Apache-2.0, licence propriétaire interne, etc.).
+| Document | Description |
+|----------|-------------|
+| [SETUP.md](SETUP.md) | Guide d'installation pas à pas |
+| [API.md](API.md) | Documentation complète de l'API REST |
+| [SERVICE-SETUP.md](SERVICE-SETUP.md) | Configuration et gestion du service systemd |
+| [TESTING.md](TESTING.md) | Guide des tests et validation |
+| [MIGRATION.md](MIGRATION.md) | Guide de migration depuis versions antérieures |
+| [CLAUDE.md](CLAUDE.md) | Guide de développement pour contributeurs |
 
+---
 
+## 🔧 Exemples d'Utilisation
+
+### cURL
+
+```bash
+# Obtenir le statut
+curl http://raspberrypi:8000/v1/camera/status
+
+# Passer en exposition manuelle (20ms, gain 2.0)
+curl -X POST http://raspberrypi:8000/v1/camera/manual_exposure \
+  -H "Content-Type: application/json" \
+  -d '{"exposure_us": 20000, "gain": 2.0}'
+
+# Arrêter le streaming
+curl -X POST http://raspberrypi:8000/v1/streaming/stop
+
+# Avec authentification (si CAMERA_API_KEY est définie)
+curl -H "X-API-Key: votre-clé" \
+  http://raspberrypi:8000/v1/camera/status
+```
+
+### Python
+
+```python
+import requests
+
+BASE_URL = "http://raspberrypi:8000"
+HEADERS = {"X-API-Key": "votre-clé"}  # Si authentification activée
+
+# Obtenir le statut
+response = requests.get(f"{BASE_URL}/v1/camera/status", headers=HEADERS)
+status = response.json()
+print(f"Lux: {status['lux']}, Exposure: {status['exposure_us']}µs")
+
+# Régler l'exposition
+requests.post(
+    f"{BASE_URL}/v1/camera/manual_exposure",
+    json={"exposure_us": 15000, "gain": 1.5},
+    headers=HEADERS
+)
+```
+
+### JavaScript / TypeScript
+
+```javascript
+const BASE_URL = "http://raspberrypi:8000";
+const headers = {
+  "Content-Type": "application/json",
+  "X-API-Key": "votre-clé"  // Si authentification activée
+};
+
+// Obtenir le statut
+const response = await fetch(`${BASE_URL}/v1/camera/status`, { headers });
+const status = await response.json();
+console.log(`Exposure: ${status.exposure_us}µs`);
+
+// Régler l'exposition
+await fetch(`${BASE_URL}/v1/camera/manual_exposure`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ exposure_us: 15000, gain: 1.5 })
+});
+```
+
+---
+
+## 🐛 Dépannage
+
+### Caméra non détectée
+
+```bash
+rpicam-hello --list-cameras
+```
+
+Si aucune caméra n'apparaît, vérifier le câble et la connexion.
+
+### Service ne démarre pas
+
+```bash
+# Voir les logs d'erreur
+sudo journalctl -u pi-camera-service -n 50
+
+# Vérifier le statut
+sudo systemctl status pi-camera-service
+
+# Tester manuellement
+cd ~/pi-camera-service
+source venv/bin/activate
+python main.py
+```
+
+### Erreur ModuleNotFoundError: picamera2
+
+Recréer le venv avec `--system-site-packages` :
+
+```bash
+cd ~/pi-camera-service
+rm -rf venv
+python3 -m venv --system-site-packages venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Pas d'image en RTSP
+
+1. Vérifier que le service tourne : `curl http://localhost:8000/health`
+2. Vérifier MediaMTX : `sudo systemctl status mediamtx`
+3. Voir les logs : `sudo journalctl -u pi-camera-service -f`
+
+📖 Voir [SERVICE-SETUP.md](SERVICE-SETUP.md#troubleshooting) pour plus de solutions.
+
+---
+
+## 🏗️ Architecture du Code
+
+```
+pi-camera-service/
+├── camera_service/
+│   ├── __init__.py
+│   ├── api.py                 # FastAPI app avec lifespan moderne
+│   ├── camera_controller.py   # Contrôle caméra thread-safe
+│   ├── streaming_manager.py   # Gestion streaming H.264
+│   ├── config.py              # Configuration Pydantic
+│   └── exceptions.py          # Exceptions personnalisées
+├── tests/
+│   ├── test_api.py            # Tests API (mocked)
+│   ├── test_api_integration.py # Tests intégration (live API)
+│   ├── test_camera_controller.py
+│   ├── test_config.py
+│   └── test_streaming_manager.py
+├── main.py                    # Point d'entrée
+├── requirements.txt           # Dépendances production
+├── requirements-dev.txt       # Dépendances développement
+├── .env.example              # Template configuration
+├── test-api.sh               # Script de test
+├── install-service.sh        # Installation service
+├── pi-camera-service.service # Fichier systemd
+└── docs/
+    ├── SETUP.md              # Guide installation
+    ├── API.md                # Documentation API
+    ├── SERVICE-SETUP.md      # Guide systemd
+    ├── TESTING.md            # Guide tests
+    ├── MIGRATION.md          # Guide migration
+    └── CLAUDE.md             # Guide développement
+```
+
+---
+
+## 🔄 Changelog - Version 1.0
+
+### Nouvelles Fonctionnalités
+- ✅ Configuration via variables d'environnement (.env support)
+- ✅ Authentification API optionnelle par clé
+- ✅ Endpoint `/health` pour monitoring
+- ✅ Versioning API avec préfixe `/v1`
+- ✅ Tests d'intégration complets avec script `./test-api.sh`
+- ✅ Service systemd avec auto-restart
+- ✅ Documentation exhaustive (5 fichiers .md)
+
+### Améliorations Techniques
+- ✅ Migration vers Pydantic BaseSettings (configuration type-safe)
+- ✅ FastAPI lifespan context manager (remplace @on_event deprecated)
+- ✅ Dependency injection pour les singletons
+- ✅ Logging structuré dans tous les modules
+- ✅ Thread safety avec RLock (reentrant)
+- ✅ Validation robuste des paramètres
+- ✅ Gestion d'erreurs avec exceptions personnalisées
+- ✅ Cleanup automatique des ressources
+
+### Corrections de Bugs
+- ✅ Fix streaming restart (caméra non redémarrée après stop)
+- ✅ Fix PATH dans systemd (ffmpeg non trouvé)
+- ✅ Fix virtual environment (--system-site-packages requis)
+- ✅ Messages d'erreur en anglais (était français)
+
+### Documentation
+- ✅ SETUP.md - Guide installation complète
+- ✅ API.md - Documentation API exhaustive
+- ✅ SERVICE-SETUP.md - Guide systemd avec troubleshooting
+- ✅ TESTING.md - Guide tests et validation
+- ✅ MIGRATION.md - Migration depuis versions antérieures
+
+---
+
+## 📝 Licence
+
+À compléter selon votre choix (MIT, Apache-2.0, etc.).
+
+---
+
+## 🤝 Contribution
+
+Voir [CLAUDE.md](CLAUDE.md) pour le guide de développement.
+
+Pour contribuer :
+1. Fork le projet
+2. Créer une branche feature (`git checkout -b feature/amazing-feature`)
+3. Commit les changements (`git commit -m 'Add amazing feature'`)
+4. Push vers la branche (`git push origin feature/amazing-feature`)
+5. Ouvrir une Pull Request
+
+---
+
+## 📞 Support
+
+En cas de problème :
+1. Consulter [TESTING.md](TESTING.md) - Lancer `./test-api.sh`
+2. Vérifier les logs : `sudo journalctl -u pi-camera-service -f`
+3. Consulter [SERVICE-SETUP.md](SERVICE-SETUP.md) - Section troubleshooting
+4. Ouvrir une issue sur GitHub
+
+---
+
+**Construit avec ❤️ pour Raspberry Pi**
+
+🤖 Refactorisé avec [Claude Code](https://claude.com/claude-code)
