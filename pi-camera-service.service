@@ -1,0 +1,36 @@
+[Unit]
+Description=Pi Camera Service (FastAPI + Picamera2)
+After=network.target mediamtx.service
+Wants=mediamtx.service
+
+[Service]
+Type=simple
+User=gmathy
+Group=gmathy
+WorkingDirectory=/home/gmathy/pi-camera-service
+
+# Environment variables (can also be loaded from .env file)
+Environment="PATH=/home/gmathy/pi-camera-service/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# Uncomment and set if you want to override .env settings:
+# Environment="CAMERA_API_KEY=your-secret-key"
+# Environment="CAMERA_LOG_LEVEL=INFO"
+# Environment="CAMERA_PORT=8000"
+
+# Start the service
+ExecStart=/home/gmathy/pi-camera-service/venv/bin/python /home/gmathy/pi-camera-service/main.py
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Security hardening (optional but recommended)
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pi-camera-service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+# Development dependencies for Pi Camera Service
+# Install with: pip install -r requirements-dev.txt
+
+# Testing framework
+pytest==8.0.0
+pytest-asyncio==0.23.5
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+httpx==0.27.0  # For testing FastAPI endpoints
+
+# Code quality and linting
+black==24.2.0
+ruff==0.2.2
+mypy==1.8.0
+
+# Type stubs
+types-PyYAML==6.0.12.12
+
+# Pre-commit hooks (optional but recommended)
+pre-commit==3.6.2
