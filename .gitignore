@@ -1,0 +1,23 @@
+# Environnement virtuel
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+
+# Logs
+*.log
+
+# Uvicorn / FastAPI
+*.db.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
