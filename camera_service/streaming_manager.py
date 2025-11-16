@@ -61,6 +61,11 @@ class StreamingManager:
 
                 picam2 = self._camera.picam2
 
+                # Ensure camera is started before recording
+                if not picam2.started:
+                    logger.debug("Camera not started, starting it now...")
+                    picam2.start()
+
                 # Create H.264 encoder
                 self._encoder = H264Encoder(bitrate=CONFIG.bitrate)
 
