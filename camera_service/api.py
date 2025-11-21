@@ -163,7 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -202,13 +202,26 @@ class AwbRequest(BaseModel):
 
 
 class CameraStatusResponse(BaseModel):
-    """Camera status response model."""
+    """Camera status response model with comprehensive metadata."""
+    # Existing fields
     lux: float | None = Field(None, description="Estimated scene brightness (lux)")
     exposure_us: int | None = Field(None, description="Current exposure time (µs)")
     analogue_gain: float | None = Field(None, description="Current analogue gain")
     colour_temperature: float | None = Field(None, description="Color temperature (K)")
     auto_exposure: bool = Field(..., description="Auto exposure enabled")
     streaming: bool = Field(..., description="Streaming active")
+
+    # New fields
+    autofocus_mode: str | None = Field(None, description="Current autofocus mode")
+    lens_position: float | None = Field(None, description="Current lens position")
+    focus_fom: int | None = Field(None, description="Focus Figure of Merit")
+    hdr_mode: str | None = Field(None, description="HDR mode")
+    lens_correction_enabled: bool | None = Field(None, description="Lens correction enabled")
+    scene_mode: str | None = Field(None, description="Scene mode (day/night/low_light)")
+    day_night_mode: str | None = Field(None, description="Day/night detection mode")
+    day_night_threshold_lux: float | None = Field(None, description="Lux threshold for day/night")
+    frame_duration_us: int | None = Field(None, description="Frame duration in microseconds")
+    sensor_black_levels: list[int] | None = Field(None, description="Sensor black levels")
 
 
 class AutoExposureResponse(StatusResponse):
@@ -238,6 +251,95 @@ class HealthResponse(BaseModel):
     camera_configured: bool = Field(..., description="Camera is configured")
     streaming_active: bool = Field(..., description="Streaming is active")
     version: str = Field(..., description="API version")
+
+
+# ========== New v2.0 Models ==========
+
+class AutofocusModeRequest(BaseModel):
+    """Request model for autofocus mode."""
+    mode: str = Field(..., description="Autofocus mode: default, manual, auto, continuous")
+
+
+class LensPositionRequest(BaseModel):
+    """Request model for manual lens position."""
+    position: float = Field(..., ge=0.0, le=15.0, description="Lens position (0.0=infinity, higher=closer)")
+
+
+class AutofocusRangeRequest(BaseModel):
+    """Request model for autofocus range."""
+    range_mode: str = Field(..., description="Autofocus range: normal, macro, full")
+
+
+class SnapshotRequest(BaseModel):
+    """Request model for snapshot capture."""
+    width: int = Field(1920, ge=320, le=4608, description="Image width in pixels")
+    height: int = Field(1080, ge=240, le=2592, description="Image height in pixels")
+    autofocus_trigger: bool = Field(True, description="Trigger autofocus before capture")
+
+
+class SnapshotResponse(StatusResponse):
+    """Response model for snapshot endpoint."""
+    image_base64: str = Field(..., description="JPEG image encoded in base64")
+    width: int = Field(..., description="Image width")
+    height: int = Field(..., description="Image height")
+
+
+class ManualAwbRequest(BaseModel):
+    """Request model for manual white balance."""
+    red_gain: float = Field(..., ge=0.5, le=5.0, description="Red channel gain")
+    blue_gain: float = Field(..., ge=0.5, le=5.0, description="Blue channel gain")
+
+
+class AwbPresetRequest(BaseModel):
+    """Request model for AWB preset."""
+    preset: str = Field(..., description="AWB preset: daylight_noir, ir_850nm, ir_940nm, indoor_noir")
+
+
+class ImageProcessingRequest(BaseModel):
+    """Request model for image processing parameters."""
+    brightness: float | None = Field(None, ge=-1.0, le=1.0, description="Brightness (-1.0 to 1.0)")
+    contrast: float | None = Field(None, ge=0.0, le=2.0, description="Contrast (0.0 to 2.0)")
+    saturation: float | None = Field(None, ge=0.0, le=2.0, description="Saturation (0.0 to 2.0)")
+    sharpness: float | None = Field(None, ge=0.0, le=16.0, description="Sharpness (0.0 to 16.0)")
+
+
+class HdrModeRequest(BaseModel):
+    """Request model for HDR mode."""
+    mode: str = Field(..., description="HDR mode: off, auto, sensor, single-exp")
+
+
+class RoiRequest(BaseModel):
+    """Request model for Region of Interest."""
+    x: float = Field(..., ge=0.0, le=1.0, description="X offset (normalized 0.0-1.0)")
+    y: float = Field(..., ge=0.0, le=1.0, description="Y offset (normalized 0.0-1.0)")
+    width: float = Field(..., gt=0.0, le=1.0, description="Width (normalized 0.0-1.0)")
+    height: float = Field(..., gt=0.0, le=1.0, description="Height (normalized 0.0-1.0)")
+
+
+class ExposureLimitsRequest(BaseModel):
+    """Request model for exposure limits."""
+    min_exposure_us: int | None = Field(None, ge=100, le=1_000_000, description="Min exposure (µs)")
+    max_exposure_us: int | None = Field(None, ge=100, le=1_000_000, description="Max exposure (µs)")
+    min_gain: float | None = Field(None, ge=1.0, le=16.0, description="Min gain")
+    max_gain: float | None = Field(None, ge=1.0, le=16.0, description="Max gain")
+
+
+class LensCorrectionRequest(BaseModel):
+    """Request model for lens correction."""
+    enabled: bool = Field(..., description="Enable lens shading correction")
+
+
+class TransformRequest(BaseModel):
+    """Request model for image transform."""
+    hflip: bool = Field(False, description="Horizontal flip")
+    vflip: bool = Field(False, description="Vertical flip")
+    rotation: int = Field(0, description="Rotation in degrees (0 or 180)")
+
+
+class DayNightModeRequest(BaseModel):
+    """Request model for day/night mode."""
+    mode: str = Field(..., description="Day/night mode: manual, auto")
+    threshold_lux: float = Field(10.0, ge=0.0, description="Lux threshold for day/night detection")
 
 
 # ========== Exception Handlers ==========
@@ -545,4 +647,577 @@ def stop_streaming(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to stop streaming",
+        )
+
+
+# ========== New v2.0 Endpoints ==========
+
+
+@app.post(
+    "/v1/camera/autofocus_mode",
+    response_model=StatusResponse,
+    tags=["Camera - Autofocus"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_autofocus_mode(
+    req: AutofocusModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set autofocus mode.
+
+    Modes:
+    - default/manual: No autofocus, manual lens position control
+    - auto: One-shot autofocus
+    - continuous: Continuous autofocus during streaming
+
+    Args:
+        req: Autofocus mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting autofocus mode: {req.mode}")
+
+    try:
+        camera.set_autofocus_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting autofocus mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set autofocus mode",
+        )
+
+
+@app.post(
+    "/v1/camera/lens_position",
+    response_model=StatusResponse,
+    tags=["Camera - Autofocus"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_lens_position(
+    req: LensPositionRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set manual lens position for focus.
+
+    Position values:
+    - 0.0: Focus at infinity
+    - 1.0-5.0: Normal focus range
+    - 10.0+: Macro/close-up focus
+
+    Args:
+        req: Lens position request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting lens position: {req.position}")
+
+    try:
+        camera.set_lens_position(req.position)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting lens position: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set lens position",
+        )
+
+
+@app.post(
+    "/v1/camera/autofocus_range",
+    response_model=StatusResponse,
+    tags=["Camera - Autofocus"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_autofocus_range(
+    req: AutofocusRangeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set autofocus search range.
+
+    Ranges:
+    - normal: Standard focus range
+    - macro: Close-up/macro focus only
+    - full: Full range search (slower but more thorough)
+
+    Args:
+        req: Autofocus range request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting autofocus range: {req.range_mode}")
+
+    try:
+        camera.set_autofocus_range(req.range_mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting autofocus range: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set autofocus range",
+        )
+
+
+@app.post(
+    "/v1/camera/snapshot",
+    response_model=SnapshotResponse,
+    tags=["Camera - Capture"],
+    dependencies=[Depends(verify_api_key)],
+)
+def capture_snapshot(
+    req: SnapshotRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> SnapshotResponse:
+    """
+    Capture a single JPEG image without stopping streaming.
+
+    Optionally triggers autofocus before capture. Image is returned
+    as base64-encoded JPEG data.
+
+    Args:
+        req: Snapshot request with resolution and autofocus settings
+
+    Returns:
+        SnapshotResponse: Base64-encoded JPEG image
+
+    Raises:
+        HTTPException: If capture fails
+    """
+    logger.info(f"Capturing snapshot: {req.width}x{req.height}")
+
+    try:
+        image_base64 = camera.capture_snapshot(
+            width=req.width,
+            height=req.height,
+            autofocus_trigger=req.autofocus_trigger,
+        )
+        return SnapshotResponse(
+            image_base64=image_base64,
+            width=req.width,
+            height=req.height,
+        )
+    except CameraNotAvailableError:
+        raise
+    except Exception as e:
+        logger.error(f"Error capturing snapshot: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to capture snapshot",
+        )
+
+
+@app.post(
+    "/v1/camera/manual_awb",
+    response_model=StatusResponse,
+    tags=["Camera - White Balance"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_manual_awb(
+    req: ManualAwbRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set manual white balance gains.
+
+    Allows precise control of color balance. Useful for NoIR cameras
+    or fixed lighting conditions.
+
+    Typical values:
+    - Daylight: red_gain=1.2-1.5, blue_gain=1.5-2.0
+    - Indoor: red_gain=1.3-1.6, blue_gain=1.4-1.8
+    - IR lighting: red_gain=1.0, blue_gain=1.0
+
+    Args:
+        req: Manual AWB request with red and blue gains
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting manual AWB: R={req.red_gain}, B={req.blue_gain}")
+
+    try:
+        camera.set_manual_awb(req.red_gain, req.blue_gain)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting manual AWB: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set manual AWB",
+        )
+
+
+@app.post(
+    "/v1/camera/awb_preset",
+    response_model=StatusResponse,
+    tags=["Camera - White Balance"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_awb_preset(
+    req: AwbPresetRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set white balance using a NoIR-optimized preset.
+
+    Presets:
+    - daylight_noir: Outdoor/daylight with NoIR camera
+    - ir_850nm: IR illumination at 850nm wavelength
+    - ir_940nm: IR illumination at 940nm wavelength
+    - indoor_noir: Indoor lighting with NoIR camera
+
+    Args:
+        req: AWB preset request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting AWB preset: {req.preset}")
+
+    try:
+        camera.set_awb_preset(req.preset)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting AWB preset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set AWB preset",
+        )
+
+
+@app.post(
+    "/v1/camera/image_processing",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_image_processing(
+    req: ImageProcessingRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set image processing parameters.
+
+    Adjust brightness, contrast, saturation, and sharpness.
+    All parameters are optional - only provided values will be updated.
+
+    Args:
+        req: Image processing request with optional parameters
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting image processing: {req}")
+
+    try:
+        camera.set_image_processing(
+            brightness=req.brightness,
+            contrast=req.contrast,
+            saturation=req.saturation,
+            sharpness=req.sharpness,
+        )
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting image processing: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set image processing",
+        )
+
+
+@app.post(
+    "/v1/camera/hdr",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_hdr_mode(
+    req: HdrModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set HDR (High Dynamic Range) mode.
+
+    Modes:
+    - off: HDR disabled
+    - auto: Automatic HDR detection
+    - sensor: Hardware HDR from sensor (Camera Module 3)
+    - single-exp: Software HDR via multi-frame processing
+
+    Note: May require camera reconfiguration to take full effect.
+
+    Args:
+        req: HDR mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting HDR mode: {req.mode}")
+
+    try:
+        camera.set_hdr_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting HDR mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set HDR mode",
+        )
+
+
+@app.post(
+    "/v1/camera/roi",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_roi(
+    req: RoiRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set Region of Interest (digital crop/zoom).
+
+    Defines a rectangular region to stream/process. Coordinates are
+    normalized (0.0 to 1.0) relative to full sensor resolution.
+
+    Example for center crop:
+    - x=0.25, y=0.25, width=0.5, height=0.5
+
+    Args:
+        req: ROI request with normalized coordinates
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting ROI: x={req.x}, y={req.y}, w={req.width}, h={req.height}")
+
+    try:
+        camera.set_roi(req.x, req.y, req.width, req.height)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting ROI: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set ROI",
+        )
+
+
+@app.post(
+    "/v1/camera/exposure_limits",
+    response_model=StatusResponse,
+    tags=["Camera - Exposure"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_exposure_limits(
+    req: ExposureLimitsRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set limits for auto-exposure algorithm.
+
+    Constrains the min/max values that auto-exposure can use.
+    Useful to prevent over/under-exposure or avoid flicker under
+    artificial lighting.
+
+    All parameters are optional - only provided limits will be set.
+
+    Args:
+        req: Exposure limits request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting exposure limits: {req}")
+
+    try:
+        camera.set_exposure_limits(
+            min_exposure_us=req.min_exposure_us,
+            max_exposure_us=req.max_exposure_us,
+            min_gain=req.min_gain,
+            max_gain=req.max_gain,
+        )
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting exposure limits: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set exposure limits",
+        )
+
+
+@app.post(
+    "/v1/camera/lens_correction",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_lens_correction(
+    req: LensCorrectionRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Enable or disable lens shading correction.
+
+    Corrects lens distortion and vignetting, particularly important
+    for wide-angle cameras (120° FOV).
+
+    Note: May require camera reconfiguration to take full effect.
+
+    Args:
+        req: Lens correction request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting lens correction: {req.enabled}")
+
+    try:
+        camera.set_lens_correction(req.enabled)
+        return StatusResponse()
+    except CameraNotAvailableError:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting lens correction: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set lens correction",
+        )
+
+
+@app.post(
+    "/v1/camera/transform",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_transform(
+    req: TransformRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set image transformation (flip/rotation).
+
+    Useful for mounting camera in different orientations.
+
+    Note: Transform changes require camera restart to take effect.
+
+    Args:
+        req: Transform request with flip/rotation settings
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting transform: hflip={req.hflip}, vflip={req.vflip}, rotation={req.rotation}")
+
+    try:
+        camera.set_transform(req.hflip, req.vflip, req.rotation)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting transform: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set transform",
+        )
+
+
+@app.post(
+    "/v1/camera/day_night_mode",
+    response_model=StatusResponse,
+    tags=["Camera - Scene Detection"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_day_night_mode(
+    req: DayNightModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set day/night detection mode.
+
+    Modes:
+    - manual: No automatic switching
+    - auto: Automatic detection based on lux threshold
+
+    When auto mode is enabled, the camera will detect scene brightness
+    and report it in the status endpoint as "day", "low_light", or "night".
+
+    Args:
+        req: Day/night mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting day/night mode: {req.mode}, threshold={req.threshold_lux}")
+
+    try:
+        camera.set_day_night_mode(req.mode, req.threshold_lux)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting day/night mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set day/night mode",
         )

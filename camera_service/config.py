@@ -78,6 +78,18 @@ class CameraConfig(BaseSettings):
         default=True,
         description="Enable auto exposure on startup",
     )
+    tuning_file: str | None = Field(
+        default=None,
+        description="Path to libcamera tuning file (auto-detected if None)",
+    )
+    camera_model: str = Field(
+        default="imx708",
+        description="Camera sensor model (imx708, imx477, etc.)",
+    )
+    is_noir: bool = Field(
+        default=False,
+        description="True if using NoIR (No IR filter) camera module",
+    )
 
     # API server configuration
     host: str = Field(

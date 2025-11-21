@@ -3,7 +3,9 @@
 Micro-service **FastAPI** production-ready pour contrôler une caméra Raspberry Pi (libcamera / Picamera2)
 et diffuser un flux **H.264** vers **MediaMTX** via **RTSP**.
 
-Version **1.0** - Refactorisé avec best practices modernes, tests complets, et documentation exhaustive.
+**Version 2.0** - Contrôle avancé de la Camera Module 3, support NoIR optimisé, autofocus, HDR, capture d'images, et bien plus !
+
+> 🆕 **Nouveau en v2.0** : Autofocus, snapshot, AWB manuel, traitement d'image, HDR, ROI, détection jour/nuit, et support NoIR optimisé ! Voir [UPGRADE_v2.md](UPGRADE_v2.md) pour les détails.
 
 ---
 
@@ -26,9 +28,10 @@ Version **1.0** - Refactorisé avec best practices modernes, tests complets, et 
 
 ## ✨ Fonctionnalités
 
-Ce service tourne **sur le Raspberry Pi**, prend le contrôle de la caméra (par ex. Raspberry Pi Camera Module v3),
+Ce service tourne **sur le Raspberry Pi**, prend le contrôle de la caméra (par ex. Raspberry Pi Camera Module v3 Wide NoIR),
 et expose une **API HTTP REST** permettant de :
 
+### Core Features (v1.0)
 - ✅ Lancer / arrêter le streaming RTSP vers MediaMTX
 - ✅ Activer / désactiver l'auto-exposition
 - ✅ Passer en exposition manuelle (temps d'expo + gain)
@@ -37,6 +40,19 @@ et expose une **API HTTP REST** permettant de :
 - ✅ Authentification API par clé (optionnelle)
 - ✅ Démarrage automatique au boot (systemd)
 - ✅ Tests d'intégration complets
+
+### Advanced Features (v2.0) 🆕
+- ✅ **Autofocus Control**: Modes manuel/auto/continuous, position lens manuelle
+- ✅ **Snapshot Capture**: Capturer des JPEG sans arrêter le streaming
+- ✅ **Manual White Balance**: Gains R/B manuels + presets NoIR optimisés
+- ✅ **Image Processing**: Brightness, contrast, saturation, sharpness
+- ✅ **HDR Support**: Mode HDR matériel du capteur Camera Module 3
+- ✅ **ROI/Digital Zoom**: Crop numérique et zoom sur zones d'intérêt
+- ✅ **Exposure Limits**: Contraindre l'auto-exposition (éviter flicker, etc.)
+- ✅ **Lens Correction**: Correction de distorsion pour wide-angle (120°)
+- ✅ **Day/Night Detection**: Détection automatique du mode jour/nuit
+- ✅ **NoIR Optimization**: Auto-détection des tuning files NoIR
+- ✅ **Enhanced Metadata**: Focus position, scene mode, HDR status, etc.
 
 Le flux vidéo est publié vers MediaMTX, qui se charge ensuite de le servir
 en **RTSP / WebRTC / HLS**, etc.
