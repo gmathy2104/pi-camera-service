@@ -401,7 +401,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="1.0.0",
+        version="2.0.0",
     )
 
 
@@ -432,12 +432,25 @@ def get_camera_status(
     try:
         status_data = camera.get_status()
         return CameraStatusResponse(
+            # Existing v1.0 fields
             lux=status_data.get("lux"),
             exposure_us=status_data.get("exposure_us"),
             analogue_gain=status_data.get("analogue_gain"),
             colour_temperature=status_data.get("colour_temperature"),
             auto_exposure=status_data.get("auto_exposure", False),
             streaming=streaming.is_streaming(),
+
+            # New v2.0 fields
+            autofocus_mode=status_data.get("autofocus_mode"),
+            lens_position=status_data.get("lens_position"),
+            focus_fom=status_data.get("focus_fom"),
+            hdr_mode=status_data.get("hdr_mode"),
+            lens_correction_enabled=status_data.get("lens_correction_enabled"),
+            scene_mode=status_data.get("scene_mode"),
+            day_night_mode=status_data.get("day_night_mode"),
+            day_night_threshold_lux=status_data.get("day_night_threshold_lux"),
+            frame_duration_us=status_data.get("frame_duration_us"),
+            sensor_black_levels=status_data.get("sensor_black_levels"),
         )
     except CameraNotAvailableError:
         raise

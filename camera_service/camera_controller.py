@@ -70,7 +70,8 @@ class CameraController:
         self._day_night_mode = "manual"  # manual, auto
         self._day_night_threshold_lux = 10.0
 
-        logger.debug("CameraController initialized")
+        logger.info("=== CameraController v2.0 initialized with autofocus support ===" )
+        logger.debug(f"Initialized with: autofocus_mode={self._autofocus_mode}, hdr_mode={self._hdr_mode}")
 
     def _check_camera_available(self) -> bool:
         """
@@ -326,9 +327,14 @@ class CameraController:
 
             try:
                 meta = self._picam2.capture_metadata()
+                logger.debug(f"get_status: _autofocus_mode={self._autofocus_mode}, _hdr_mode={self._hdr_mode}")
 
                 # Get scene mode
-                scene_mode = self.get_scene_mode()
+                try:
+                    scene_mode = self.get_scene_mode()
+                except Exception as scene_ex:
+                    logger.warning(f"Failed to get scene mode: {scene_ex}")
+                    scene_mode = "unknown"
 
                 status = {
                     # Existing metadata
@@ -350,10 +356,10 @@ class CameraController:
                     "frame_duration_us": meta.get("FrameDuration"),
                     "sensor_black_levels": meta.get("SensorBlackLevels"),
                 }
-                logger.debug(f"Camera status: {status}")
+                logger.debug(f"Camera status built: autofocus_mode={status['autofocus_mode']}, hdr_mode={status['hdr_mode']}")
                 return status
             except Exception as e:
-                logger.error(f"Error retrieving camera metadata: {e}")
+                logger.error(f"Error retrieving camera metadata: {e}", exc_info=True)
                 raise
 
     # ---------- Autofocus Controls ----------
