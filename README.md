@@ -1,174 +1,234 @@
 # Pi Camera Service
 
-Micro-service **FastAPI** production-ready pour contrôler une caméra Raspberry Pi (libcamera / Picamera2)
-et diffuser un flux **H.264** vers **MediaMTX** via **RTSP**.
+Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.0** - Contrôle avancé de la Camera Module 3, support NoIR optimisé, autofocus, HDR, capture d'images, et bien plus !
+**Version 2.0** - Advanced Camera Module 3 control with NoIR optimization, autofocus, HDR, image capture, and more!
 
-> 🆕 **Nouveau en v2.0** : Autofocus, snapshot, AWB manuel, traitement d'image, HDR, ROI, détection jour/nuit, et support NoIR optimisé ! Voir [UPGRADE_v2.md](UPGRADE_v2.md) pour les détails.
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
+
+> 🆕 **New in v2.0**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing (brightness/contrast/saturation/sharpness), HDR support, ROI/digital zoom, day/night detection, and enhanced metadata! See [UPGRADE_v2.md](UPGRADE_v2.md) for details.
 
 ---
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
 ```bash
-# Installation complète (voir SETUP.md pour les détails)
+# Complete installation (see SETUP.md for details)
 ./install-service.sh
 
-# Tester que tout fonctionne
-./test-api.sh
+# Test everything works
+./test-api-v2.sh
 
-# Accéder au stream RTSP
-# VLC: rtsp://<IP_DU_PI>:8554/cam
+# Access RTSP stream
+# VLC: rtsp://<PI_IP>:8554/cam
 ```
 
-📖 **Documentation complète** : Voir [SETUP.md](SETUP.md) pour l'installation pas à pas.
+📖 **Complete Documentation**: See [SETUP.md](SETUP.md) for step-by-step installation.
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Features
 
-Ce service tourne **sur le Raspberry Pi**, prend le contrôle de la caméra (par ex. Raspberry Pi Camera Module v3 Wide NoIR),
-et expose une **API HTTP REST** permettant de :
+This service runs **on the Raspberry Pi**, controls the camera (e.g., Raspberry Pi Camera Module 3 Wide NoIR), and exposes an **HTTP REST API** to:
 
 ### Core Features (v1.0)
-- ✅ Lancer / arrêter le streaming RTSP vers MediaMTX
-- ✅ Activer / désactiver l'auto-exposition
-- ✅ Passer en exposition manuelle (temps d'expo + gain)
-- ✅ Activer / désactiver l'auto white balance (AWB)
-- ✅ Récupérer l'état courant de la caméra (lux, expo, gain, température de couleur…)
-- ✅ Authentification API par clé (optionnelle)
-- ✅ Démarrage automatique au boot (systemd)
-- ✅ Tests d'intégration complets
+- ✅ Start/stop RTSP streaming to MediaMTX
+- ✅ Enable/disable auto-exposure
+- ✅ Set manual exposure (time + gain)
+- ✅ Enable/disable auto white balance (AWB)
+- ✅ Get current camera status (lux, exposure, gain, color temperature, etc.)
+- ✅ API key authentication (optional)
+- ✅ Auto-start at boot (systemd)
+- ✅ Comprehensive test suite
 
 ### Advanced Features (v2.0) 🆕
-- ✅ **Autofocus Control**: Modes manuel/auto/continuous, position lens manuelle
-- ✅ **Snapshot Capture**: Capturer des JPEG sans arrêter le streaming
-- ✅ **Manual White Balance**: Gains R/B manuels + presets NoIR optimisés
-- ✅ **Image Processing**: Brightness, contrast, saturation, sharpness
-- ✅ **HDR Support**: Mode HDR matériel du capteur Camera Module 3
-- ✅ **ROI/Digital Zoom**: Crop numérique et zoom sur zones d'intérêt
-- ✅ **Exposure Limits**: Contraindre l'auto-exposition (éviter flicker, etc.)
-- ✅ **Lens Correction**: Correction de distorsion pour wide-angle (120°)
-- ✅ **Day/Night Detection**: Détection automatique du mode jour/nuit
-- ✅ **NoIR Optimization**: Auto-détection des tuning files NoIR
-- ✅ **Enhanced Metadata**: Focus position, scene mode, HDR status, etc.
 
-Le flux vidéo est publié vers MediaMTX, qui se charge ensuite de le servir
-en **RTSP / WebRTC / HLS**, etc.
+#### 🎯 Autofocus Control (Camera Module 3)
+- **Autofocus modes**: manual, auto, continuous
+- **Manual lens position**: 0.0 (infinity) to 15.0 (macro ~10cm)
+- **Autofocus range**: normal, macro, full
+- **Endpoints**: `POST /v1/camera/{autofocus_mode,lens_position,autofocus_range}`
+
+#### 📸 Image Capture
+- **Snapshot without stopping stream**: Capture JPEG images on-demand
+- **Configurable resolution**: Up to 4608×2592 (12MP)
+- **Auto-focus trigger**: Optional autofocus before capture
+- **Base64 encoded output**: Easy integration with web apps
+- **Endpoint**: `POST /v1/camera/snapshot`
+
+#### 🎨 Advanced White Balance
+- **Manual AWB gains**: Precise red/blue channel control
+- **NoIR-optimized presets**:
+  - `daylight_noir` - Outdoor/daylight with NoIR camera
+  - `ir_850nm` - IR illumination at 850nm wavelength
+  - `ir_940nm` - IR illumination at 940nm wavelength
+  - `indoor_noir` - Indoor lighting with NoIR camera
+- **Endpoints**: `POST /v1/camera/{manual_awb,awb_preset}`
+
+#### 🖼️ Image Processing
+- **Brightness**: -1.0 to 1.0 adjustment
+- **Contrast**: 0.0 to 2.0 (1.0 = no change)
+- **Saturation**: 0.0 to 2.0 (1.0 = no change)
+- **Sharpness**: 0.0 to 16.0 (higher = sharper)
+- **Endpoint**: `POST /v1/camera/image_processing`
+
+#### ✨ HDR Support
+- **Hardware HDR**: From Camera Module 3 sensor
+- **Modes**: off, auto, sensor, single-exp
+- **Endpoint**: `POST /v1/camera/hdr`
+
+#### 🔍 ROI / Digital Zoom
+- **Region of Interest**: Crop and stream specific areas
+- **Normalized coordinates**: 0.0-1.0 for resolution-independent control
+- **Hardware-accelerated**: No performance impact
+- **Endpoint**: `POST /v1/camera/roi`
+
+#### ⚙️ Exposure Control
+- **Exposure limits**: Constrain auto-exposure min/max values
+- **Prevent flicker**: Useful for artificial lighting
+- **Maintain framerate**: Limit max exposure time
+- **Endpoint**: `POST /v1/camera/exposure_limits`
+
+#### 🔧 Lens & Transform
+- **Lens correction**: Distortion correction for wide-angle cameras (120° FOV)
+- **Image transform**: Horizontal/vertical flip, rotation
+- **Endpoints**: `POST /v1/camera/{lens_correction,transform}`
+
+#### 🌓 Day/Night Detection
+- **Automatic scene detection**: day, low_light, night
+- **Configurable threshold**: Lux-based switching
+- **Endpoint**: `POST /v1/camera/day_night_mode`
+
+#### 📊 Enhanced Metadata
+- **10 new status fields**: autofocus_mode, lens_position, focus_fom, hdr_mode, scene_mode, and more
+- **Real-time monitoring**: All metadata available via `GET /v1/camera/status`
+
+#### 🌙 NoIR Camera Support
+- **Auto-detection**: Tuning files for NoIR cameras
+- **Configuration variables**: `CAMERA_CAMERA_MODEL`, `CAMERA_IS_NOIR`, `CAMERA_TUNING_FILE`
+- **Optimized presets**: AWB presets specifically for NoIR imaging
+
+The video stream is published to MediaMTX, which then serves it via **RTSP / WebRTC / HLS**.
 
 ---
 
 ## 📐 Architecture
 
 ```
-Pi Camera v3  ──>  Picamera2 / libcamera  ──>  H.264 encoder  ──>  MediaMTX (RTSP, WebRTC, HLS...)
+Pi Camera v3  ──>  Picamera2/libcamera  ──>  H.264 encoder  ──>  MediaMTX (RTSP, WebRTC, HLS)
                          ▲                         ▲
                          │                         │
                   Pi Camera Service API (FastAPI)  │
                          ▲                         │
-                   App externe (backend, UI...) ───┘
+                   External App (backend, UI)  ────┘
 ```
 
-**Composants** :
-- **Pi Camera Service** : ce projet, tournant sur le Pi
-- **Picamera2** : librairie Python pour piloter libcamera
-- **MediaMTX** : serveur de streaming multiprotocole
-- **Application externe** : consomme le flux via MediaMTX et pilote la caméra via HTTP
+**Components**:
+- **Pi Camera Service**: This project, running on the Pi
+- **Picamera2**: Python library for controlling libcamera
+- **MediaMTX**: Multi-protocol streaming server
+- **External Application**: Consumes stream via MediaMTX and controls camera via HTTP
 
-**Technologies** :
-- FastAPI avec lifespan context manager moderne
-- Pydantic BaseSettings pour configuration type-safe
-- Threading avec RLock pour thread-safety
-- Logging structuré
-- Tests pytest + tests d'intégration
+**Technologies**:
+- FastAPI with modern lifespan context manager
+- Pydantic BaseSettings for type-safe configuration
+- Threading with RLock for thread-safety
+- Structured logging
+- pytest tests + integration tests
 
 ---
 
-## 📋 Prérequis
+## 📋 Prerequisites
 
-### Matériel
-- Raspberry Pi (Pi 4 ou Pi 5 recommandé pour l'encodage H.264)
-- Caméra compatible libcamera (ex: Raspberry Pi Camera Module v3)
+### Hardware
+- Raspberry Pi (Pi 4 or Pi 5 recommended for H.264 encoding)
+- libcamera-compatible camera (e.g., Raspberry Pi Camera Module 3)
 
-### Logiciel
-- Raspberry Pi OS (Bookworm ou plus récent)
+### Software
+- Raspberry Pi OS (Bookworm or later)
 - Python 3.9+
-- MediaMTX installé et configuré
+- MediaMTX installed and configured
 
 ---
 
 ## 📦 Installation
 
-### Installation Rapide
+### Quick Installation
 
-Suivez le guide complet dans [SETUP.md](SETUP.md) :
+Follow the complete guide in [SETUP.md](SETUP.md):
 
 ```bash
-# 1. Installer les dépendances système
+# 1. Install system dependencies
 sudo apt update
 sudo apt install -y python3-venv python3-picamera2 python3-libcamera libcamera-apps ffmpeg git
 
-# 2. Cloner le projet
-git clone <votre-repo-url> ~/pi-camera-service
+# 2. Clone the project
+git clone https://github.com/gmathy2104/pi-camera-service.git ~/pi-camera-service
 cd ~/pi-camera-service
 
-# 3. Créer l'environnement virtuel (IMPORTANT: avec --system-site-packages)
+# 3. Create virtual environment (IMPORTANT: with --system-site-packages)
 python3 -m venv --system-site-packages venv
 source venv/bin/activate
 
-# 4. Installer les dépendances
+# 4. Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 5. Installer le service systemd
+# 5. Install systemd service
 ./install-service.sh
 ```
 
-> **⚠️ Important** : L'environnement virtuel DOIT être créé avec `--system-site-packages`
-> pour accéder à picamera2 qui est installé via APT.
+> **⚠️ Important**: The virtual environment MUST be created with `--system-site-packages`
+> to access picamera2 which is installed via APT.
 
 ---
 
 ## ⚙️ Configuration
 
-### Variables d'Environnement
+### Environment Variables
 
-Le service utilise des variables d'environnement avec le préfixe `CAMERA_`.
+The service uses environment variables with the `CAMERA_` prefix.
 
-Créer un fichier `.env` (optionnel) :
+Create a `.env` file (optional):
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-**Principales variables** :
+**Main variables**:
 
 ```bash
-# Résolution et qualité vidéo
+# Video resolution and quality
 CAMERA_WIDTH=1920
 CAMERA_HEIGHT=1080
 CAMERA_FRAMERATE=30
 CAMERA_BITRATE=8000000
 
-# Serveur API
+# API server
 CAMERA_HOST=0.0.0.0
 CAMERA_PORT=8000
 
-# Authentification (optionnelle)
-CAMERA_API_KEY=votre-clé-secrète
+# Authentication (optional)
+CAMERA_API_KEY=your-secret-key
 
-# URL RTSP MediaMTX
+# MediaMTX RTSP URL
 CAMERA_RTSP_URL=rtsp://127.0.0.1:8554/cam
+
+# Camera hardware (v2.0)
+CAMERA_CAMERA_MODEL=imx708         # Camera sensor model
+CAMERA_IS_NOIR=false               # True for NoIR cameras
 
 # Logging
 CAMERA_LOG_LEVEL=INFO
 ```
 
-### Configuration MediaMTX
+### MediaMTX Configuration
 
-Dans `mediamtx.yml`, déclarer le path `cam` comme **publisher** :
+In `mediamtx.yml`, declare the `cam` path as **publisher**:
 
 ```yaml
 paths:
@@ -176,13 +236,13 @@ paths:
     source: publisher
 ```
 
-> ⚠️ **Ne PAS utiliser** `source: rpiCamera` (conflit avec ce service)
+> ⚠️ **DO NOT use** `source: rpiCamera` (conflicts with this service)
 
 ---
 
-## 🚀 Utilisation
+## 🚀 Usage
 
-### Démarrage Manuel
+### Manual Start
 
 ```bash
 cd ~/pi-camera-service
@@ -190,33 +250,33 @@ source venv/bin/activate
 python main.py
 ```
 
-L'API sera disponible sur `http://0.0.0.0:8000`
+The API will be available at `http://0.0.0.0:8000`
 
-### Service Systemd (Production)
+### Systemd Service (Production)
 
 ```bash
-# Démarrer
+# Start
 sudo systemctl start pi-camera-service
 
-# Arrêter
+# Stop
 sudo systemctl stop pi-camera-service
 
-# Redémarrer
+# Restart
 sudo systemctl restart pi-camera-service
 
-# Voir les logs
+# View logs
 sudo journalctl -u pi-camera-service -f
 ```
 
-📖 Voir [SERVICE-SETUP.md](SERVICE-SETUP.md) pour la documentation complète du service.
+📖 See [SERVICE-SETUP.md](SERVICE-SETUP.md) for complete service documentation.
 
 ---
 
-## 📡 API HTTP - Endpoints
+## 📡 HTTP API - Endpoints
 
-**Base URL** : `http://<IP_DU_PI>:8000`
+**Base URL**: `http://<PI_IP>:8000`
 
-### Santé du Service
+### Service Health
 
 **GET** `/health`
 ```json
@@ -224,11 +284,11 @@ sudo journalctl -u pi-camera-service -f
   "status": "healthy",
   "camera_configured": true,
   "streaming_active": true,
-  "version": "1.0.0"
+  "version": "2.0.0"
 }
 ```
 
-### Statut de la Caméra
+### Camera Status (Enhanced in v2.0)
 
 **GET** `/v1/camera/status`
 ```json
@@ -238,11 +298,23 @@ sudo journalctl -u pi-camera-service -f
   "analogue_gain": 1.5,
   "colour_temperature": 4200.0,
   "auto_exposure": true,
-  "streaming": true
+  "streaming": true,
+
+  // New v2.0 fields
+  "autofocus_mode": "continuous",
+  "lens_position": 2.5,
+  "focus_fom": 12500,
+  "hdr_mode": "off",
+  "lens_correction_enabled": true,
+  "scene_mode": "day",
+  "day_night_mode": "auto",
+  "day_night_threshold_lux": 10.0,
+  "frame_duration_us": 33321,
+  "sensor_black_levels": [4096, 4096, 4096, 4096]
 }
 ```
 
-### Contrôle de l'Exposition
+### Exposure Control
 
 **POST** `/v1/camera/auto_exposure`
 ```json
@@ -257,86 +329,179 @@ sudo journalctl -u pi-camera-service -f
 }
 ```
 
-### Balance des Blancs
+### White Balance
 
 **POST** `/v1/camera/awb`
 ```json
 {"enabled": false}
 ```
 
-### Contrôle du Streaming
+**POST** `/v1/camera/manual_awb` (v2.0)
+```json
+{
+  "red_gain": 1.5,
+  "blue_gain": 1.8
+}
+```
+
+**POST** `/v1/camera/awb_preset` (v2.0)
+```json
+{"preset": "daylight_noir"}
+```
+
+### Autofocus Control (v2.0)
+
+**POST** `/v1/camera/autofocus_mode`
+```json
+{"mode": "continuous"}  // manual, auto, continuous
+```
+
+**POST** `/v1/camera/lens_position`
+```json
+{"position": 5.0}  // 0.0 = infinity, 10.0 = ~10cm
+```
+
+**POST** `/v1/camera/autofocus_range`
+```json
+{"range_mode": "normal"}  // normal, macro, full
+```
+
+### Image Capture (v2.0)
+
+**POST** `/v1/camera/snapshot`
+```json
+{
+  "width": 1920,
+  "height": 1080,
+  "autofocus_trigger": true
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "image_base64": "base64_encoded_jpeg_data...",
+  "width": 1920,
+  "height": 1080
+}
+```
+
+### Image Processing (v2.0)
+
+**POST** `/v1/camera/image_processing`
+```json
+{
+  "brightness": 0.1,   // -1.0 to 1.0
+  "contrast": 1.2,     // 0.0 to 2.0
+  "saturation": 1.0,   // 0.0 to 2.0
+  "sharpness": 8.0     // 0.0 to 16.0
+}
+```
+
+### HDR Mode (v2.0)
+
+**POST** `/v1/camera/hdr`
+```json
+{"mode": "sensor"}  // off, auto, sensor, single-exp
+```
+
+### ROI / Digital Zoom (v2.0)
+
+**POST** `/v1/camera/roi`
+```json
+{
+  "x": 0.25,      // X offset (0.0-1.0)
+  "y": 0.25,      // Y offset (0.0-1.0)
+  "width": 0.5,   // Width (0.0-1.0)
+  "height": 0.5   // Height (0.0-1.0)
+}
+```
+
+### Streaming Control
 
 **POST** `/v1/streaming/start`
+
 **POST** `/v1/streaming/stop`
 
-📖 **Documentation API complète** : Voir [API.md](API.md)
+📖 **Complete API Documentation**: See [API.md](API.md)
 
 ---
 
-## 🧪 Tests
+## 🧪 Testing
 
-### Tests d'Intégration API
+### v2.0 API Integration Tests
 
-Vérifier que tout fonctionne correctement :
+Test all v2.0 features:
 
 ```bash
-# Le service doit être démarré
+# Service must be running
+./test-api-v2.sh
+```
+
+**Expected output**:
+```
+========================================
+✓ All v2.0 API tests passed!
+========================================
+```
+
+### Legacy Tests
+
+```bash
+# Basic API test (v1.0 endpoints)
 ./test-api.sh
-```
 
-**Sortie attendue** :
-```
-✓ All tests passed! Your Pi Camera Service is working correctly.
-```
-
-### Tous les Tests
-
-```bash
-# Tests unitaires
+# Unit tests
 pytest tests/ --ignore=tests/test_api_integration.py
 
-# Tests d'intégration (service doit tourner)
+# Integration tests (service must be running)
 pytest tests/test_api_integration.py -v
 
-# Tous les tests
+# All tests
 pytest tests/ -v
 ```
 
-📖 Voir [TESTING.md](TESTING.md) pour le guide complet des tests.
+📖 See [TESTING.md](TESTING.md) for complete testing guide.
 
 ---
 
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [SETUP.md](SETUP.md) | Guide d'installation pas à pas |
-| [API.md](API.md) | Documentation complète de l'API REST |
-| [SERVICE-SETUP.md](SERVICE-SETUP.md) | Configuration et gestion du service systemd |
-| [TESTING.md](TESTING.md) | Guide des tests et validation |
-| [MIGRATION.md](MIGRATION.md) | Guide de migration depuis versions antérieures |
-| [CLAUDE.md](CLAUDE.md) | Guide de développement pour contributeurs |
-
----
-
-## 🔧 Exemples d'Utilisation
+## 🔧 Usage Examples
 
 ### cURL
 
 ```bash
-# Obtenir le statut
+# Get status with v2.0 metadata
 curl http://raspberrypi:8000/v1/camera/status
 
-# Passer en exposition manuelle (20ms, gain 2.0)
-curl -X POST http://raspberrypi:8000/v1/camera/manual_exposure \
+# Set autofocus to continuous mode
+curl -X POST http://raspberrypi:8000/v1/camera/autofocus_mode \
   -H "Content-Type: application/json" \
-  -d '{"exposure_us": 20000, "gain": 2.0}'
+  -d '{"mode": "continuous"}'
 
-# Arrêter le streaming
-curl -X POST http://raspberrypi:8000/v1/streaming/stop
+# Capture a snapshot
+curl -X POST http://raspberrypi:8000/v1/camera/snapshot \
+  -H "Content-Type: application/json" \
+  -d '{"width": 1920, "height": 1080}' \
+  | jq -r '.image_base64' | base64 -d > snapshot.jpg
 
-# Avec authentification (si CAMERA_API_KEY est définie)
-curl -H "X-API-Key: votre-clé" \
+# Set manual white balance (NoIR daylight preset)
+curl -X POST http://raspberrypi:8000/v1/camera/awb_preset \
+  -H "Content-Type: application/json" \
+  -d '{"preset": "daylight_noir"}'
+
+# Adjust image processing
+curl -X POST http://raspberrypi:8000/v1/camera/image_processing \
+  -H "Content-Type: application/json" \
+  -d '{"brightness": 0.1, "contrast": 1.2, "sharpness": 10.0}'
+
+# Set ROI (center crop)
+curl -X POST http://raspberrypi:8000/v1/camera/roi \
+  -H "Content-Type: application/json" \
+  -d '{"x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}'
+
+# With authentication (if CAMERA_API_KEY is set)
+curl -H "X-API-Key: your-key" \
   http://raspberrypi:8000/v1/camera/status
 ```
 
@@ -344,19 +509,52 @@ curl -H "X-API-Key: votre-clé" \
 
 ```python
 import requests
+import base64
+from pathlib import Path
 
 BASE_URL = "http://raspberrypi:8000"
-HEADERS = {"X-API-Key": "votre-clé"}  # Si authentification activée
+HEADERS = {"X-API-Key": "your-key"}  # If auth enabled
 
-# Obtenir le statut
+# Get enhanced status with v2.0 metadata
 response = requests.get(f"{BASE_URL}/v1/camera/status", headers=HEADERS)
 status = response.json()
-print(f"Lux: {status['lux']}, Exposure: {status['exposure_us']}µs")
+print(f"Autofocus: {status['autofocus_mode']}, Scene: {status['scene_mode']}")
+print(f"Lux: {status['lux']}, Focus FoM: {status['focus_fom']}")
 
-# Régler l'exposition
+# Set autofocus mode
 requests.post(
-    f"{BASE_URL}/v1/camera/manual_exposure",
-    json={"exposure_us": 15000, "gain": 1.5},
+    f"{BASE_URL}/v1/camera/autofocus_mode",
+    json={"mode": "continuous"},
+    headers=HEADERS
+)
+
+# Capture snapshot and save to file
+response = requests.post(
+    f"{BASE_URL}/v1/camera/snapshot",
+    json={"width": 1920, "height": 1080, "autofocus_trigger": True},
+    headers=HEADERS
+)
+snapshot_data = response.json()
+image_bytes = base64.b64decode(snapshot_data['image_base64'])
+Path("snapshot.jpg").write_bytes(image_bytes)
+print(f"Snapshot saved: {snapshot_data['width']}x{snapshot_data['height']}")
+
+# Set manual AWB for NoIR camera
+requests.post(
+    f"{BASE_URL}/v1/camera/awb_preset",
+    json={"preset": "daylight_noir"},
+    headers=HEADERS
+)
+
+# Adjust image processing
+requests.post(
+    f"{BASE_URL}/v1/camera/image_processing",
+    json={
+        "brightness": 0.1,
+        "contrast": 1.2,
+        "saturation": 1.0,
+        "sharpness": 8.0
+    },
     headers=HEADERS
 )
 ```
@@ -367,52 +565,69 @@ requests.post(
 const BASE_URL = "http://raspberrypi:8000";
 const headers = {
   "Content-Type": "application/json",
-  "X-API-Key": "votre-clé"  // Si authentification activée
+  "X-API-Key": "your-key"  // If auth enabled
 };
 
-// Obtenir le statut
+// Get enhanced status
 const response = await fetch(`${BASE_URL}/v1/camera/status`, { headers });
 const status = await response.json();
-console.log(`Exposure: ${status.exposure_us}µs`);
+console.log(`Autofocus: ${status.autofocus_mode}, Scene: ${status.scene_mode}`);
 
-// Régler l'exposition
-await fetch(`${BASE_URL}/v1/camera/manual_exposure`, {
+// Set autofocus mode
+await fetch(`${BASE_URL}/v1/camera/autofocus_mode`, {
   method: "POST",
   headers,
-  body: JSON.stringify({ exposure_us: 15000, gain: 1.5 })
+  body: JSON.stringify({ mode: "continuous" })
+});
+
+// Capture snapshot
+const snapshotRes = await fetch(`${BASE_URL}/v1/camera/snapshot`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ width: 1920, height: 1080 })
+});
+const { image_base64 } = await snapshotRes.json();
+// Convert base64 to blob for download or display
+const blob = await fetch(`data:image/jpeg;base64,${image_base64}`).then(r => r.blob());
+
+// Set manual AWB
+await fetch(`${BASE_URL}/v1/camera/manual_awb`, {
+  method: "POST",
+  headers,
+  body: JSON.stringify({ red_gain: 1.5, blue_gain: 1.8 })
 });
 ```
 
 ---
 
-## 🐛 Dépannage
+## 🐛 Troubleshooting
 
-### Caméra non détectée
+### Camera not detected
 
 ```bash
 rpicam-hello --list-cameras
 ```
 
-Si aucune caméra n'apparaît, vérifier le câble et la connexion.
+If no camera appears, check cable and connection.
 
-### Service ne démarre pas
+### Service won't start
 
 ```bash
-# Voir les logs d'erreur
+# View error logs
 sudo journalctl -u pi-camera-service -n 50
 
-# Vérifier le statut
+# Check status
 sudo systemctl status pi-camera-service
 
-# Tester manuellement
+# Test manually
 cd ~/pi-camera-service
 source venv/bin/activate
 python main.py
 ```
 
-### Erreur ModuleNotFoundError: picamera2
+### ModuleNotFoundError: picamera2
 
-Recréer le venv avec `--system-site-packages` :
+Recreate venv with `--system-site-packages`:
 
 ```bash
 cd ~/pi-camera-service
@@ -423,116 +638,188 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Pas d'image en RTSP
+### No RTSP image
 
-1. Vérifier que le service tourne : `curl http://localhost:8000/health`
-2. Vérifier MediaMTX : `sudo systemctl status mediamtx`
-3. Voir les logs : `sudo journalctl -u pi-camera-service -f`
+1. Check service is running: `curl http://localhost:8000/health`
+2. Check MediaMTX: `sudo systemctl status mediamtx`
+3. View logs: `sudo journalctl -u pi-camera-service -f`
 
-📖 Voir [SERVICE-SETUP.md](SERVICE-SETUP.md#troubleshooting) pour plus de solutions.
+### exposure_limits endpoint fails
+
+Some libcamera versions don't support `ExposureTimeMin/Max` controls. This is a platform limitation, not a bug. The endpoint will fail gracefully with a clear error message.
+
+📖 See [SERVICE-SETUP.md](SERVICE-SETUP.md#troubleshooting) for more solutions.
 
 ---
 
-## 🏗️ Architecture du Code
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [README.md](README.md) | This file - project overview |
+| [UPGRADE_v2.md](UPGRADE_v2.md) | Complete v2.0 upgrade guide with examples |
+| [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
+| [SETUP.md](SETUP.md) | Step-by-step installation guide |
+| [API.md](API.md) | Complete REST API documentation |
+| [SERVICE-SETUP.md](SERVICE-SETUP.md) | systemd service configuration |
+| [TESTING.md](TESTING.md) | Testing and validation guide |
+| [MIGRATION.md](MIGRATION.md) | Migration from previous versions |
+| [CLAUDE.md](CLAUDE.md) | Development guide for contributors |
+
+---
+
+## 🏗️ Code Architecture
 
 ```
 pi-camera-service/
 ├── camera_service/
 │   ├── __init__.py
-│   ├── api.py                 # FastAPI app avec lifespan moderne
-│   ├── camera_controller.py   # Contrôle caméra thread-safe
-│   ├── streaming_manager.py   # Gestion streaming H.264
-│   ├── config.py              # Configuration Pydantic
-│   └── exceptions.py          # Exceptions personnalisées
+│   ├── api.py                 # FastAPI app with modern lifespan
+│   ├── camera_controller.py   # Thread-safe camera control
+│   ├── streaming_manager.py   # H.264 streaming management
+│   ├── config.py              # Pydantic configuration
+│   └── exceptions.py          # Custom exceptions
 ├── tests/
-│   ├── test_api.py            # Tests API (mocked)
-│   ├── test_api_integration.py # Tests intégration (live API)
+│   ├── test_api.py            # API tests (mocked)
+│   ├── test_api_integration.py # Integration tests (live API)
 │   ├── test_camera_controller.py
 │   ├── test_config.py
 │   └── test_streaming_manager.py
-├── main.py                    # Point d'entrée
-├── requirements.txt           # Dépendances production
-├── requirements-dev.txt       # Dépendances développement
-├── .env.example              # Template configuration
-├── test-api.sh               # Script de test
-├── install-service.sh        # Installation service
-├── pi-camera-service.service # Fichier systemd
-└── docs/
-    ├── SETUP.md              # Guide installation
-    ├── API.md                # Documentation API
-    ├── SERVICE-SETUP.md      # Guide systemd
-    ├── TESTING.md            # Guide tests
-    ├── MIGRATION.md          # Guide migration
-    └── CLAUDE.md             # Guide développement
+├── main.py                    # Entry point
+├── requirements.txt           # Production dependencies
+├── requirements-dev.txt       # Development dependencies
+├── .env.example              # Configuration template
+├── test-api.sh               # v1.0 test script
+├── test-api-v2.sh            # v2.0 test script (NEW)
+├── install-service.sh        # Service installation
+├── pi-camera-service.service # systemd file
+├── CHANGELOG.md              # Version history (NEW)
+├── VERSION                   # Version number (NEW)
+└── UPGRADE_v2.md             # v2.0 upgrade guide (NEW)
 ```
 
 ---
 
-## 🔄 Changelog - Version 1.0
+## 🔄 Version History
 
-### Nouvelles Fonctionnalités
-- ✅ Configuration via variables d'environnement (.env support)
-- ✅ Authentification API optionnelle par clé
-- ✅ Endpoint `/health` pour monitoring
-- ✅ Versioning API avec préfixe `/v1`
-- ✅ Tests d'intégration complets avec script `./test-api.sh`
-- ✅ Service systemd avec auto-restart
-- ✅ Documentation exhaustive (5 fichiers .md)
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Améliorations Techniques
-- ✅ Migration vers Pydantic BaseSettings (configuration type-safe)
-- ✅ FastAPI lifespan context manager (remplace @on_event deprecated)
-- ✅ Dependency injection pour les singletons
-- ✅ Logging structuré dans tous les modules
-- ✅ Thread safety avec RLock (reentrant)
-- ✅ Validation robuste des paramètres
-- ✅ Gestion d'erreurs avec exceptions personnalisées
-- ✅ Cleanup automatique des ressources
+### Version 2.0.0 (2025-11-21)
 
-### Corrections de Bugs
-- ✅ Fix streaming restart (caméra non redémarrée après stop)
-- ✅ Fix PATH dans systemd (ffmpeg non trouvé)
-- ✅ Fix virtual environment (--system-site-packages requis)
-- ✅ Messages d'erreur en anglais (était français)
+**Major Features:**
+- ✅ Autofocus control (modes, lens position, range)
+- ✅ Snapshot capture (JPEG, base64 encoded)
+- ✅ Manual white balance + NoIR presets
+- ✅ Image processing (brightness, contrast, saturation, sharpness)
+- ✅ HDR support (hardware + software modes)
+- ✅ ROI / Digital zoom
+- ✅ Exposure limits
+- ✅ Lens correction for wide-angle cameras
+- ✅ Image transform (flip/rotation)
+- ✅ Day/night detection
+- ✅ NoIR camera optimization
+- ✅ Enhanced metadata (10 new status fields)
 
-### Documentation
-- ✅ SETUP.md - Guide installation complète
-- ✅ API.md - Documentation API exhaustive
-- ✅ SERVICE-SETUP.md - Guide systemd avec troubleshooting
-- ✅ TESTING.md - Guide tests et validation
-- ✅ MIGRATION.md - Migration depuis versions antérieures
+**14 new endpoints**, **1200+ lines of code**, **100% backward compatible** with v1.0
 
----
+See [UPGRADE_v2.md](UPGRADE_v2.md) for complete upgrade guide.
 
-## 📝 Licence
+### Version 1.0.0
 
-À compléter selon votre choix (MIT, Apache-2.0, etc.).
+**Initial production release:**
+- FastAPI-based HTTP API
+- RTSP streaming to MediaMTX
+- Auto/manual exposure control
+- Auto white balance control
+- Camera status endpoint
+- API key authentication
+- systemd service support
+- Comprehensive test suite
 
 ---
 
-## 🤝 Contribution
+## 🌟 Use Cases
 
-Voir [CLAUDE.md](CLAUDE.md) pour le guide de développement.
+### Surveillance with NoIR Camera
+```bash
+# Set day/night auto-detection
+curl -X POST http://raspberrypi:8000/v1/camera/day_night_mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "auto", "threshold_lux": 10.0}'
 
-Pour contribuer :
-1. Fork le projet
-2. Créer une branche feature (`git checkout -b feature/amazing-feature`)
-3. Commit les changements (`git commit -m 'Add amazing feature'`)
-4. Push vers la branche (`git push origin feature/amazing-feature`)
-5. Ouvrir une Pull Request
+# Apply NoIR IR preset
+curl -X POST http://raspberrypi:8000/v1/camera/awb_preset \
+  -H "Content-Type: application/json" \
+  -d '{"preset": "ir_850nm"}'
+```
+
+### Time-lapse Photography
+```python
+import requests
+import time
+
+for i in range(100):
+    response = requests.post(
+        "http://raspberrypi:8000/v1/camera/snapshot",
+        json={"width": 4608, "height": 2592, "autofocus_trigger": True}
+    )
+    # Save snapshot...
+    time.sleep(60)  # Every minute
+```
+
+### Computer Vision / ML
+```python
+# Capture snapshot for processing
+snapshot = requests.post(
+    "http://raspberrypi:8000/v1/camera/snapshot",
+    json={"width": 640, "height": 480}
+).json()
+
+# Decode and process with OpenCV/TensorFlow
+image = base64.b64decode(snapshot['image_base64'])
+# ... ML processing ...
+```
+
+---
+
+## 📝 License
+
+MIT License - See [LICENSE](LICENSE) file for details.
+
+---
+
+## 🤝 Contributing
+
+See [CLAUDE.md](CLAUDE.md) for development guide.
+
+To contribute:
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## 📞 Support
 
-En cas de problème :
-1. Consulter [TESTING.md](TESTING.md) - Lancer `./test-api.sh`
-2. Vérifier les logs : `sudo journalctl -u pi-camera-service -f`
-3. Consulter [SERVICE-SETUP.md](SERVICE-SETUP.md) - Section troubleshooting
-4. Ouvrir une issue sur GitHub
+If you encounter issues:
+1. Check [TESTING.md](TESTING.md) - Run `./test-api-v2.sh`
+2. View logs: `sudo journalctl -u pi-camera-service -f`
+3. Check [SERVICE-SETUP.md](SERVICE-SETUP.md) - Troubleshooting section
+4. Open an issue on [GitHub](https://github.com/gmathy2104/pi-camera-service/issues)
 
 ---
 
-**Construit avec ❤️ pour Raspberry Pi**
+## 🙏 Acknowledgments
 
-🤖 Refactorisé avec [Claude Code](https://claude.com/claude-code)
+- Raspberry Pi Foundation for Camera Module 3 and libcamera
+- FastAPI team for the excellent framework
+- MediaMTX for versatile streaming server
+- Community contributors
+
+---
+
+**Built with ❤️ for Raspberry Pi**
+
+🤖 Enhanced with [Claude Code](https://claude.com/claude-code)
