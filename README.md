@@ -8,25 +8,26 @@ Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (l
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
+[![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🆕 **New in v2.0**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing (brightness/contrast/saturation/sharpness), HDR support, ROI/digital zoom, day/night detection, and enhanced metadata! See [UPGRADE_v2.md](UPGRADE_v2.md) for details.
+> 🆕 **New in v2.0**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing (brightness/contrast/saturation/sharpness), HDR support, ROI/digital zoom, day/night detection, and enhanced metadata! See [docs/upgrade-v2.md](docs/upgrade-v2.md) for details.
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# Complete installation (see SETUP.md for details)
-./install-service.sh
+# Complete installation (see docs/installation.md for details)
+./scripts/install-service.sh
 
 # Test everything works
-./test-api-v2.sh
+./scripts/test-api-v2.sh
 
 # Access RTSP stream
 # VLC: rtsp://<PI_IP>:8554/cam
 ```
 
-📖 **Complete Documentation**: See [SETUP.md](SETUP.md) for step-by-step installation.
+📖 **Complete Documentation**: See [docs/installation.md](docs/installation.md) for step-by-step installation.
 
 ---
 
@@ -158,7 +159,7 @@ Pi Camera v3  ──>  Picamera2/libcamera  ──>  H.264 encoder  ──>  Med
 
 ### Quick Installation
 
-Follow the complete guide in [SETUP.md](SETUP.md):
+Follow the complete guide in [docs/installation.md](docs/installation.md):
 
 ```bash
 # 1. Install system dependencies
@@ -268,7 +269,7 @@ sudo systemctl restart pi-camera-service
 sudo journalctl -u pi-camera-service -f
 ```
 
-📖 See [SERVICE-SETUP.md](SERVICE-SETUP.md) for complete service documentation.
+📖 See [docs/installation.md](docs/installation.md) for complete service documentation.
 
 ---
 
@@ -424,7 +425,7 @@ sudo journalctl -u pi-camera-service -f
 
 **POST** `/v1/streaming/stop`
 
-📖 **Complete API Documentation**: See [API.md](API.md)
+📖 **Complete API Documentation**: See [docs/api-reference.md](docs/api-reference.md)
 
 ---
 
@@ -462,7 +463,7 @@ pytest tests/test_api_integration.py -v
 pytest tests/ -v
 ```
 
-📖 See [TESTING.md](TESTING.md) for complete testing guide.
+📖 See [docs/development.md](docs/development.md) for complete testing guide.
 
 ---
 
@@ -648,7 +649,7 @@ pip install -r requirements.txt
 
 Some libcamera versions don't support `ExposureTimeMin/Max` controls. This is a platform limitation, not a bug. The endpoint will fail gracefully with a clear error message.
 
-📖 See [SERVICE-SETUP.md](SERVICE-SETUP.md#troubleshooting) for more solutions.
+📖 See [docs/installation.md](docs/installation.md#troubleshooting) for more solutions.
 
 ---
 
@@ -657,14 +658,14 @@ Some libcamera versions don't support `ExposureTimeMin/Max` controls. This is a 
 | Document | Description |
 |----------|-------------|
 | [README.md](README.md) | This file - project overview |
-| [UPGRADE_v2.md](UPGRADE_v2.md) | Complete v2.0 upgrade guide with examples |
+| [docs/installation.md](docs/installation.md) | Complete installation and setup guide |
+| [docs/api-reference.md](docs/api-reference.md) | Full REST API documentation |
+| [docs/configuration.md](docs/configuration.md) | Configuration options and examples |
+| [docs/development.md](docs/development.md) | Development guide and testing |
+| [docs/upgrade-v2.md](docs/upgrade-v2.md) | Migration guide to v2.0 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute to the project |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
-| [SETUP.md](SETUP.md) | Step-by-step installation guide |
-| [API.md](API.md) | Complete REST API documentation |
-| [SERVICE-SETUP.md](SERVICE-SETUP.md) | systemd service configuration |
-| [TESTING.md](TESTING.md) | Testing and validation guide |
-| [MIGRATION.md](MIGRATION.md) | Migration from previous versions |
-| [CLAUDE.md](CLAUDE.md) | Development guide for contributors |
+| [LICENSE](LICENSE) | MIT License |
 
 ---
 
@@ -790,7 +791,7 @@ MIT License - See [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
-See [CLAUDE.md](CLAUDE.md) for development guide.
+See [docs/development.md](docs/development.md) for development guide and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 To contribute:
 1. Fork the project
@@ -804,9 +805,9 @@ To contribute:
 ## 📞 Support
 
 If you encounter issues:
-1. Check [TESTING.md](TESTING.md) - Run `./test-api-v2.sh`
+1. Check [docs/development.md](docs/development.md) - Run `./scripts/test-api-v2.sh`
 2. View logs: `sudo journalctl -u pi-camera-service -f`
-3. Check [SERVICE-SETUP.md](SERVICE-SETUP.md) - Troubleshooting section
+3. Check [docs/installation.md](docs/installation.md#troubleshooting) - Troubleshooting section
 4. Open an issue on [GitHub](https://github.com/gmathy2104/pi-camera-service/issues)
 
 ---

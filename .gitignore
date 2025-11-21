@@ -1,5 +1,13 @@
-# Environnement virtuel
+# Environment and secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Virtual environment
 venv/
+env/
+ENV/
 
 # Python
 __pycache__/
@@ -9,15 +17,35 @@ __pycache__/
 *.pdb
 *.egg-info/
 *.egg
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
 
 # Logs
 *.log
+logs/
 
-# Uvicorn / FastAPI
+# Databases
+*.db
+*.sqlite3
 *.db.sqlite3
 
-# IDE
+# IDE and editors
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
+*~
+.DS_Store
+
+# Testing
+.tox/
+.pytest_cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
