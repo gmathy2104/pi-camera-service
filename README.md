@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.0** - Advanced Camera Module 3 control with NoIR optimization, autofocus, HDR, image capture, and more!
+**Version 2.1** - Advanced exposure controls, noise reduction, dynamic resolution, and low-light optimization!
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🆕 **New in v2.0**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing (brightness/contrast/saturation/sharpness), HDR support, ROI/digital zoom, day/night detection, and enhanced metadata! See [docs/upgrade-v2.md](docs/upgrade-v2.md) for details.
+> 🆕 **New in v2.1**: Exposure value (EV) compensation, noise reduction modes, advanced AE controls (constraint/exposure modes), AWB mode presets, autofocus trigger, dynamic resolution change, and corrected exposure limits! Perfect for low-light scenarios.
+>
+> ℹ️ **v2.0 features**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing, HDR support, ROI/digital zoom, day/night detection. See [docs/upgrade-v2.md](docs/upgrade-v2.md).
 
 ---
 
@@ -111,6 +113,58 @@ This service runs **on the Raspberry Pi**, controls the camera (e.g., Raspberry 
 - **Auto-detection**: Tuning files for NoIR cameras
 - **Configuration variables**: `CAMERA_CAMERA_MODEL`, `CAMERA_IS_NOIR`, `CAMERA_TUNING_FILE`
 - **Optimized presets**: AWB presets specifically for NoIR imaging
+
+### Advanced Features (v2.1) 🆕
+
+#### 💡 Exposure Value (EV) Compensation
+- **EV adjustment**: -8.0 to +8.0 compensation
+- **Brightness control**: Fine-tune auto-exposure target brightness
+- **Use cases**: Backlit scenes, high-contrast situations
+- **Endpoint**: `POST /v1/camera/exposure_value`
+
+#### 🎚️ Noise Reduction Modes
+- **5 modes**: off, fast, high_quality, minimal, zsl
+- **Quality vs Performance**: Balance noise reduction with processing speed
+- **Perfect for low-light**: Compensate for high gain noise
+- **Endpoint**: `POST /v1/camera/noise_reduction`
+
+#### 🎯 Advanced Auto-Exposure Controls
+- **AE Constraint Mode**: normal, highlight, shadows, custom
+  - Control how AE handles over/underexposure
+- **AE Exposure Mode**: normal, short, long, custom
+  - Prioritize exposure time vs gain
+- **Endpoints**: `POST /v1/camera/{ae_constraint_mode,ae_exposure_mode}`
+
+#### 🌈 AWB Mode Presets
+- **7 preset modes**: auto, tungsten, fluorescent, indoor, daylight, cloudy, custom
+- **Optimized for lighting**: Quick white balance adjustment
+- **Endpoint**: `POST /v1/camera/awb_mode`
+
+#### 📷 Autofocus Trigger
+- **Manual trigger**: Initiate autofocus scan on demand
+- **One-shot AF**: Useful for manual/auto focus modes
+- **Endpoint**: `POST /v1/camera/autofocus_trigger`
+
+#### 📐 Dynamic Resolution Change
+- **Change resolution**: Adjust streaming resolution without service restart
+- **Seamless switching**: Automatic stop/reconfigure/restart
+- **Common resolutions**: 1920x1080, 1280x720, 640x480, 4K
+- **Endpoint**: `POST /v1/camera/resolution`
+
+#### ⏱️ Corrected Exposure Limits (FIXED)
+- **Frame duration control**: Uses `FrameDurationLimits` (libcamera native)
+- **Prevent flicker**: Constrain min/max frame duration
+- **Maintains framerate**: Limit exposure time for consistent FPS
+- **Endpoint**: `POST /v1/camera/exposure_limits`
+
+#### 🌙 Low-Light Optimization
+- **Ready-made scripts**: One-command low-light configuration
+- **3 modes**: Static scenes, moving subjects, normal
+- **Scripts**:
+  - `./scripts/set-low-light-mode.sh` - Maximum visibility (static)
+  - `./scripts/set-low-light-motion-mode.sh` - Reduced blur (motion)
+  - `./scripts/set-normal-mode.sh` - Reset to defaults
+- **Documentation**: See [docs/low-light-modes.md](docs/low-light-modes.md)
 
 The video stream is published to MediaMTX, which then serves it via **RTSP / WebRTC / HLS**.
 

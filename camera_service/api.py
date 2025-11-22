@@ -163,7 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
@@ -342,6 +342,40 @@ class DayNightModeRequest(BaseModel):
     threshold_lux: float = Field(10.0, ge=0.0, description="Lux threshold for day/night detection")
 
 
+# ========== New v2.1 Models ==========
+
+class ExposureValueRequest(BaseModel):
+    """Request model for exposure value (EV) compensation."""
+    ev: float = Field(..., ge=-8.0, le=8.0, description="EV compensation (-8.0 to +8.0)")
+
+
+class NoiseReductionRequest(BaseModel):
+    """Request model for noise reduction mode."""
+    mode: str = Field(..., description="Noise reduction mode: off, fast, high_quality, minimal, zsl")
+
+
+class AeConstraintModeRequest(BaseModel):
+    """Request model for AE constraint mode."""
+    mode: str = Field(..., description="AE constraint mode: normal, highlight, shadows, custom")
+
+
+class AeExposureModeRequest(BaseModel):
+    """Request model for AE exposure mode."""
+    mode: str = Field(..., description="AE exposure mode: normal, short, long, custom")
+
+
+class AwbModeRequest(BaseModel):
+    """Request model for AWB mode."""
+    mode: str = Field(..., description="AWB mode: auto, tungsten, fluorescent, indoor, daylight, cloudy, custom")
+
+
+class ResolutionRequest(BaseModel):
+    """Request model for resolution change."""
+    width: int = Field(..., ge=64, le=4096, description="Video width in pixels")
+    height: int = Field(..., ge=64, le=4096, description="Video height in pixels")
+    restart_streaming: bool = Field(True, description="Restart streaming after resolution change")
+
+
 # ========== Exception Handlers ==========
 
 @app.exception_handler(InvalidParameterError)
@@ -401,7 +435,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="2.0.0",
+        version="2.1.0",
     )
 
 
@@ -1233,4 +1267,325 @@ def set_day_night_mode(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to set day/night mode",
+        )
+
+
+# ========== New v2.1 Endpoints ==========
+
+
+@app.post(
+    "/v1/camera/exposure_value",
+    response_model=StatusResponse,
+    tags=["Camera - Exposure"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_exposure_value(
+    req: ExposureValueRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set exposure value (EV) compensation.
+
+    EV compensation adjusts the target brightness of auto-exposure.
+    Positive values make the image brighter, negative values darker.
+
+    Examples:
+    - +1.0 EV: Double the brightness (useful in backlit scenes)
+    - -1.0 EV: Half the brightness (useful in bright scenes)
+    - 0.0 EV: No compensation
+
+    Args:
+        req: Exposure value request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting exposure value: {req.ev}")
+
+    try:
+        camera.set_exposure_value(req.ev)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting exposure value: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set exposure value",
+        )
+
+
+@app.post(
+    "/v1/camera/noise_reduction",
+    response_model=StatusResponse,
+    tags=["Camera - Image Processing"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_noise_reduction(
+    req: NoiseReductionRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set noise reduction mode.
+
+    Modes:
+    - off: No noise reduction (sharpest but noisiest)
+    - fast: Fast noise reduction (good for real-time video)
+    - high_quality: High quality noise reduction (best quality, slower)
+    - minimal: Minimal noise reduction
+    - zsl: Zero shutter lag mode
+
+    Args:
+        req: Noise reduction request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting noise reduction mode: {req.mode}")
+
+    try:
+        camera.set_noise_reduction_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting noise reduction: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set noise reduction mode",
+        )
+
+
+@app.post(
+    "/v1/camera/ae_constraint_mode",
+    response_model=StatusResponse,
+    tags=["Camera - Exposure"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_ae_constraint_mode(
+    req: AeConstraintModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set auto-exposure constraint mode.
+
+    Constraint modes determine how the AE algorithm handles exposure:
+    - normal: Default balanced exposure
+    - highlight: Preserve highlights (avoid overexposure/clipping)
+    - shadows: Preserve shadows (avoid underexposure)
+    - custom: Platform-specific custom mode
+
+    Args:
+        req: AE constraint mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting AE constraint mode: {req.mode}")
+
+    try:
+        camera.set_ae_constraint_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting AE constraint mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set AE constraint mode",
+        )
+
+
+@app.post(
+    "/v1/camera/ae_exposure_mode",
+    response_model=StatusResponse,
+    tags=["Camera - Exposure"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_ae_exposure_mode(
+    req: AeExposureModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set auto-exposure mode.
+
+    Exposure modes control how AE selects exposure time and gain:
+    - normal: Balanced exposure time and gain
+    - short: Prefer shorter exposure times (reduce motion blur, more noise)
+    - long: Prefer longer exposure times (reduce noise, more blur in motion)
+    - custom: Platform-specific custom mode
+
+    Args:
+        req: AE exposure mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting AE exposure mode: {req.mode}")
+
+    try:
+        camera.set_ae_exposure_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting AE exposure mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set AE exposure mode",
+        )
+
+
+@app.post(
+    "/v1/camera/awb_mode",
+    response_model=StatusResponse,
+    tags=["Camera - White Balance"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_awb_mode(
+    req: AwbModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Set auto white balance mode (preset illuminants).
+
+    AWB modes are optimized for different lighting conditions:
+    - auto: Automatic white balance for any scene
+    - tungsten: Incandescent/tungsten lighting (~2700K)
+    - fluorescent: Fluorescent lighting (~4000K)
+    - indoor: General indoor lighting
+    - daylight: Outdoor daylight (~5500K)
+    - cloudy: Cloudy/overcast daylight (~6500K)
+    - custom: Platform-specific custom mode
+
+    Args:
+        req: AWB mode request
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting AWB mode: {req.mode}")
+
+    try:
+        camera.set_awb_mode(req.mode)
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting AWB mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set AWB mode",
+        )
+
+
+@app.post(
+    "/v1/camera/autofocus_trigger",
+    response_model=StatusResponse,
+    tags=["Camera - Autofocus"],
+    dependencies=[Depends(verify_api_key)],
+)
+def trigger_autofocus(
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> StatusResponse:
+    """
+    Trigger a one-shot autofocus cycle.
+
+    Initiates an autofocus scan. Useful when in manual or auto focus mode.
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info("Triggering autofocus")
+
+    try:
+        camera.trigger_autofocus()
+        return StatusResponse()
+    except CameraNotAvailableError:
+        raise
+    except Exception as e:
+        logger.error(f"Error triggering autofocus: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to trigger autofocus",
+        )
+
+
+@app.post(
+    "/v1/camera/resolution",
+    response_model=StatusResponse,
+    tags=["Camera"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_resolution(
+    req: ResolutionRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+    streaming: Annotated[StreamingManager, Depends(get_streaming_manager)],
+) -> StatusResponse:
+    """
+    Change camera resolution dynamically.
+
+    Changes the streaming resolution by stopping, reconfiguring, and restarting.
+    The stream will be briefly interrupted during the resolution change.
+
+    Common resolutions:
+    - 1920x1080 (Full HD)
+    - 1280x720 (HD)
+    - 640x480 (VGA)
+    - 3840x2160 (4K, if sensor supports)
+
+    Args:
+        req: Resolution request with width, height, and restart flag
+
+    Returns:
+        StatusResponse: Confirmation
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting resolution: {req.width}x{req.height}")
+
+    try:
+        # Check if streaming is active
+        was_streaming = streaming.is_streaming()
+
+        # Stop streaming if active (must stop encoder first)
+        if was_streaming:
+            logger.info("Stopping streaming before resolution change")
+            streaming.stop()
+
+        # Change resolution (this will stop, reconfigure, and restart camera)
+        camera.set_resolution(req.width, req.height)
+
+        # Restart streaming if requested and was previously streaming
+        if req.restart_streaming and was_streaming:
+            logger.info("Restarting streaming after resolution change")
+            streaming.start()
+
+        return StatusResponse()
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting resolution: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set resolution",
         )

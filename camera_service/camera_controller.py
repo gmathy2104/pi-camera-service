@@ -698,11 +698,18 @@ class CameraController:
         """
         Set limits for auto-exposure algorithm.
 
+        Uses FrameDurationLimits to constrain the frame duration, which indirectly
+        limits the maximum exposure time that auto-exposure can use.
+
+        Note: libcamera does not provide direct controls for min/max exposure time
+        or gain limits. This method uses FrameDurationLimits as the closest alternative.
+        For more precise control, use manual exposure mode.
+
         Args:
-            min_exposure_us: Minimum exposure time in microseconds
-            max_exposure_us: Maximum exposure time in microseconds
-            min_gain: Minimum analogue gain
-            max_gain: Maximum analogue gain
+            min_exposure_us: Minimum frame duration in microseconds (default: based on framerate)
+            max_exposure_us: Maximum frame duration in microseconds (limits max exposure)
+            min_gain: Minimum analogue gain (not directly supported, logged as warning)
+            max_gain: Maximum analogue gain (not directly supported, logged as warning)
 
         Raises:
             InvalidParameterError: If limits are invalid
@@ -710,44 +717,55 @@ class CameraController:
         """
         controls = {}
 
-        if min_exposure_us is not None:
-            if min_exposure_us < MIN_EXPOSURE_US:
+        # Warn about gain limits not being directly supported
+        if min_gain is not None or max_gain is not None:
+            logger.warning(
+                "Direct gain limits (min_gain/max_gain) are not supported by libcamera. "
+                "Use FrameDurationLimits to indirectly constrain exposure, or use manual exposure mode."
+            )
+
+        # Use FrameDurationLimits to constrain exposure time
+        # Frame duration directly limits how long the camera can expose
+        if min_exposure_us is not None or max_exposure_us is not None:
+            # Get current metadata to determine sensible defaults
+            try:
+                meta = self._picam2.capture_metadata()
+                current_frame_duration = meta.get("FrameDuration", 33333)  # Default to ~30fps
+            except Exception:
+                current_frame_duration = 33333  # Default to ~30fps if metadata unavailable
+
+            # Set frame duration limits
+            min_duration = min_exposure_us if min_exposure_us is not None else 100
+            max_duration = max_exposure_us if max_exposure_us is not None else current_frame_duration
+
+            if min_duration < MIN_EXPOSURE_US:
                 raise InvalidParameterError(
                     f"min_exposure_us must be >= {MIN_EXPOSURE_US}"
                 )
-            controls["ExposureTimeMin"] = min_exposure_us
-
-        if max_exposure_us is not None:
-            if max_exposure_us > MAX_EXPOSURE_US:
+            if max_duration > MAX_EXPOSURE_US:
                 raise InvalidParameterError(
                     f"max_exposure_us must be <= {MAX_EXPOSURE_US}"
                 )
-            controls["ExposureTimeMax"] = max_exposure_us
+            if min_duration >= max_duration:
+                raise InvalidParameterError(
+                    "min_exposure_us must be less than max_exposure_us"
+                )
 
-        if min_gain is not None:
-            if min_gain < MIN_GAIN:
-                raise InvalidParameterError(f"min_gain must be >= {MIN_GAIN}")
-            controls["AnalogueGainMin"] = min_gain
-
-        if max_gain is not None:
-            if max_gain > MAX_GAIN:
-                raise InvalidParameterError(f"max_gain must be <= {MAX_GAIN}")
-            controls["AnalogueGainMax"] = max_gain
-
-        # Validate min < max
-        if min_exposure_us and max_exposure_us and min_exposure_us >= max_exposure_us:
-            raise InvalidParameterError(
-                "min_exposure_us must be less than max_exposure_us"
+            controls["FrameDurationLimits"] = (min_duration, max_duration)
+            logger.info(
+                f"Setting FrameDurationLimits to constrain exposure: "
+                f"min={min_duration}µs, max={max_duration}µs"
             )
-        if min_gain and max_gain and min_gain >= max_gain:
-            raise InvalidParameterError("min_gain must be less than max_gain")
 
         with self._lock:
             if self._picam2 is None:
                 raise CameraNotAvailableError("Camera not initialized")
 
-            self._picam2.set_controls(controls)
-            logger.info(f"Exposure limits set: {controls}")
+            if controls:
+                self._picam2.set_controls(controls)
+                logger.info(f"Exposure limits set via FrameDurationLimits: {controls}")
+            else:
+                logger.warning("No valid exposure limits provided")
 
     # ---------- Lens Correction ----------
 
@@ -858,3 +876,275 @@ class CameraController:
             except Exception as e:
                 logger.error(f"Error detecting scene mode: {e}")
                 return "unknown"
+
+    # ---------- New v2.1 Controls ----------
+
+    def set_exposure_value(self, ev: float) -> None:
+        """
+        Set exposure value (EV) compensation.
+
+        EV compensation adjusts the target brightness of the auto-exposure algorithm.
+        Positive values make the image brighter, negative values make it darker.
+
+        Args:
+            ev: Exposure value compensation (-8.0 to +8.0, 0.0 = no adjustment)
+
+        Raises:
+            InvalidParameterError: If EV is out of range
+            CameraNotAvailableError: If camera is not configured
+        """
+        if ev < -8.0 or ev > 8.0:
+            raise InvalidParameterError(
+                f"ExposureValue must be between -8.0 and 8.0 (got {ev})"
+            )
+
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            self._picam2.set_controls({"ExposureValue": ev})
+            logger.info(f"Exposure value compensation set to: {ev}")
+
+    def set_noise_reduction_mode(self, mode: str) -> None:
+        """
+        Set noise reduction mode.
+
+        Modes:
+        - "off": No noise reduction
+        - "fast": Fast noise reduction (lower quality, better performance)
+        - "high_quality": High quality noise reduction (slower)
+        - "minimal": Minimal noise reduction
+        - "zsl": Zero shutter lag mode
+
+        Args:
+            mode: Noise reduction mode
+
+        Raises:
+            InvalidParameterError: If mode is not valid
+            CameraNotAvailableError: If camera is not configured
+        """
+        valid_modes = ["off", "fast", "high_quality", "minimal", "zsl"]
+        if mode not in valid_modes:
+            raise InvalidParameterError(
+                f"Invalid noise reduction mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
+            )
+
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            # Map mode names to libcamera NoiseReductionMode enum values
+            mode_map = {
+                "off": 0,
+                "fast": 1,
+                "high_quality": 2,
+                "minimal": 3,
+                "zsl": 4,
+            }
+
+            self._picam2.set_controls({"NoiseReductionMode": mode_map[mode]})
+            logger.info(f"Noise reduction mode set to: {mode}")
+
+    def set_ae_constraint_mode(self, mode: str) -> None:
+        """
+        Set auto-exposure constraint mode.
+
+        Constraint modes determine how the AE algorithm adjusts scene brightness
+        to reach the target exposure.
+
+        Modes:
+        - "normal": Default constraint mode
+        - "highlight": Preserve highlights (avoid overexposure)
+        - "shadows": Preserve shadows (avoid underexposure)
+        - "custom": Platform-specific custom mode
+
+        Args:
+            mode: Constraint mode
+
+        Raises:
+            InvalidParameterError: If mode is not valid
+            CameraNotAvailableError: If camera is not configured
+        """
+        valid_modes = ["normal", "highlight", "shadows", "custom"]
+        if mode not in valid_modes:
+            raise InvalidParameterError(
+                f"Invalid AE constraint mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
+            )
+
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            mode_map = {
+                "normal": 0,
+                "highlight": 1,
+                "shadows": 2,
+                "custom": 3,
+            }
+
+            self._picam2.set_controls({"AeConstraintMode": mode_map[mode]})
+            logger.info(f"AE constraint mode set to: {mode}")
+
+    def set_ae_exposure_mode(self, mode: str) -> None:
+        """
+        Set auto-exposure mode.
+
+        Exposure modes control how the AE algorithm selects exposure time and gain.
+
+        Modes:
+        - "normal": Normal exposure mode
+        - "short": Prefer shorter exposure times (reduce motion blur)
+        - "long": Prefer longer exposure times (reduce noise in low light)
+        - "custom": Platform-specific custom mode
+
+        Args:
+            mode: Exposure mode
+
+        Raises:
+            InvalidParameterError: If mode is not valid
+            CameraNotAvailableError: If camera is not configured
+        """
+        valid_modes = ["normal", "short", "long", "custom"]
+        if mode not in valid_modes:
+            raise InvalidParameterError(
+                f"Invalid AE exposure mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
+            )
+
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            mode_map = {
+                "normal": 0,
+                "short": 1,
+                "long": 2,
+                "custom": 3,
+            }
+
+            self._picam2.set_controls({"AeExposureMode": mode_map[mode]})
+            logger.info(f"AE exposure mode set to: {mode}")
+
+    def set_awb_mode(self, mode: str) -> None:
+        """
+        Set auto white balance mode (preset illuminants).
+
+        AWB modes are optimized for different lighting conditions.
+
+        Modes:
+        - "auto": Automatic white balance for any scene
+        - "tungsten": Incandescent/tungsten lighting (~2700K)
+        - "fluorescent": Fluorescent lighting (~4000K)
+        - "indoor": Indoor lighting
+        - "daylight": Daylight (~5500K)
+        - "cloudy": Cloudy daylight (~6500K)
+        - "custom": Platform-specific custom mode
+
+        Args:
+            mode: AWB mode
+
+        Raises:
+            InvalidParameterError: If mode is not valid
+            CameraNotAvailableError: If camera is not configured
+        """
+        valid_modes = ["auto", "tungsten", "fluorescent", "indoor", "daylight", "cloudy", "custom"]
+        if mode not in valid_modes:
+            raise InvalidParameterError(
+                f"Invalid AWB mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
+            )
+
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            mode_map = {
+                "auto": 0,
+                "tungsten": 1,
+                "fluorescent": 2,
+                "indoor": 3,
+                "daylight": 4,
+                "cloudy": 5,
+                "custom": 7,
+            }
+
+            self._picam2.set_controls({
+                "AwbEnable": True,
+                "AwbMode": mode_map[mode]
+            })
+            logger.info(f"AWB mode set to: {mode}")
+
+    def trigger_autofocus(self) -> None:
+        """
+        Trigger a one-shot autofocus cycle.
+
+        Initiates an autofocus scan. Useful when in manual or auto focus mode.
+
+        Raises:
+            CameraNotAvailableError: If camera is not configured
+        """
+        with self._lock:
+            if self._picam2 is None:
+                raise CameraNotAvailableError("Camera not initialized")
+
+            # Trigger autofocus cycle
+            self._picam2.set_controls({"AfTrigger": 0})  # 0 = Start
+            logger.info("Autofocus triggered")
+
+    def set_resolution(self, width: int, height: int) -> None:
+        """
+        Change camera resolution by stopping and reconfiguring.
+
+        This method stops the camera, reconfigures it with the new resolution,
+        and leaves it in a stopped state. The caller (API/streaming_manager) is
+        responsible for restarting the camera and streaming.
+
+        Args:
+            width: New video width in pixels (64-4096)
+            height: New video height in pixels (64-4096)
+
+        Raises:
+            InvalidParameterError: If resolution is invalid
+            CameraNotAvailableError: If camera is not configured
+        """
+        if width < 64 or width > 4096:
+            raise InvalidParameterError(f"width must be between 64 and 4096 (got {width})")
+        if height < 64 or height > 4096:
+            raise InvalidParameterError(f"height must be between 64 and 4096 (got {height})")
+
+        with self._lock:
+            if self._picam2 is None or not self._configured:
+                raise CameraNotAvailableError("Camera not configured")
+
+            try:
+                logger.info(f"Changing camera resolution to {width}x{height}")
+
+                # Stop camera if running
+                was_started = self._picam2.started
+                if was_started:
+                    logger.debug("Stopping camera for resolution change")
+                    self._picam2.stop()
+
+                # Create new video configuration with desired resolution
+                new_config = self._picam2.create_video_configuration(
+                    main={
+                        "size": (width, height),
+                        "format": "YUV420",
+                    },
+                    controls={
+                        "FrameRate": CONFIG.framerate,
+                        "AfMode": 2,  # Maintain continuous autofocus
+                    },
+                )
+
+                # Apply new configuration
+                self._picam2.configure(new_config)
+
+                # Restart camera if it was running
+                if was_started:
+                    logger.debug("Restarting camera with new resolution")
+                    self._picam2.start()
+
+                logger.info(f"Resolution changed to {width}x{height} successfully")
+
+            except Exception as e:
+                logger.error(f"Failed to change resolution: {e}")
+                raise InvalidParameterError(f"Resolution change failed: {e}")

@@ -5,6 +5,64 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-11-22
+
+### Added
+
+#### Advanced Exposure Controls
+- `POST /v1/camera/exposure_value` - EV compensation (-8.0 to +8.0)
+  - Fine-tune auto-exposure target brightness
+  - Perfect for backlit scenes and high-contrast situations
+- `POST /v1/camera/ae_constraint_mode` - AE constraint modes (normal/highlight/shadows/custom)
+  - Control how auto-exposure handles over/underexposure
+- `POST /v1/camera/ae_exposure_mode` - AE exposure modes (normal/short/long/custom)
+  - Prioritize exposure time vs gain for different scenarios
+
+#### Noise Reduction
+- `POST /v1/camera/noise_reduction` - Noise reduction modes
+  - 5 modes: off, fast, high_quality, minimal, zsl
+  - Balance quality vs performance
+  - Essential for low-light scenarios with high gain
+
+#### White Balance Presets
+- `POST /v1/camera/awb_mode` - AWB mode presets
+  - 7 preset modes: auto, tungsten, fluorescent, indoor, daylight, cloudy, custom
+  - Quick white balance adjustment for different lighting conditions
+
+#### Autofocus Enhancement
+- `POST /v1/camera/autofocus_trigger` - Manual autofocus trigger
+  - Initiate one-shot autofocus on demand
+  - Useful for manual or auto focus modes
+
+#### Dynamic Resolution
+- `POST /v1/camera/resolution` - Change resolution without service restart
+  - Seamless stop/reconfigure/restart
+  - Support for all standard resolutions (1920x1080, 1280x720, 640x480, 4K)
+
+#### Low-Light Optimization
+- `scripts/set-low-light-mode.sh` - One-command low-light configuration for static scenes
+- `scripts/set-low-light-motion-mode.sh` - Low-light configuration for moving subjects
+- `scripts/set-normal-mode.sh` - Reset to default settings
+- `docs/low-light-modes.md` - Comprehensive low-light configuration guide
+
+### Fixed
+- **BREAKING FIX**: `POST /v1/camera/exposure_limits` now uses `FrameDurationLimits`
+  - Previous implementation used non-existent libcamera controls (`ExposureTimeMin/Max`, `AnalogueGainMin/Max`)
+  - Now correctly uses `FrameDurationLimits` to constrain frame duration
+  - This indirectly limits maximum exposure time
+  - **Note**: Direct gain limits are not supported by libcamera; use manual exposure mode for precise control
+
+### Changed
+- API version bumped to 2.1.0
+- Health endpoint now returns version "2.0.0" (updated from "1.0.0")
+- Enhanced test suite with 18 comprehensive tests (8 v2.0 + 10 v2.1)
+
+### Documentation
+- Updated README.md with v2.1 features
+- Added comprehensive low-light modes documentation
+- Added test script `scripts/test-api-v2-1.sh`
+- Created `tests/test_api_v2_1.py` with 10 new integration tests
+
 ## [2.0.0] - 2025-11-21
 
 ### Added
