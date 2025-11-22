@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from threading import RLock
 from typing import Annotated, AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Security, status
@@ -36,6 +37,10 @@ logger = logging.getLogger(__name__)
 # Global instances (initialized in lifespan)
 camera_controller: CameraController | None = None
 streaming_manager: StreamingManager | None = None
+
+# Global lock for camera reconfiguration operations
+# Protects sequences that require stopping/reconfiguring/restarting streaming
+_reconfiguration_lock = RLock()
 
 # API Key authentication
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -1643,32 +1648,34 @@ def set_resolution(
     """
     logger.info(f"Setting resolution: {req.width}x{req.height}")
 
-    try:
-        # Check if streaming is active
-        was_streaming = streaming.is_streaming()
+    # Use global lock to prevent concurrent reconfiguration operations
+    with _reconfiguration_lock:
+        try:
+            # Check if streaming is active
+            was_streaming = streaming.is_streaming()
 
-        # Stop streaming if active (must stop encoder first)
-        if was_streaming:
-            logger.info("Stopping streaming before resolution change")
-            streaming.stop()
+            # Stop streaming if active (must stop encoder first)
+            if was_streaming:
+                logger.info("Stopping streaming before resolution change")
+                streaming.stop()
 
-        # Change resolution (this will stop, reconfigure, and restart camera)
-        camera.set_resolution(req.width, req.height)
+            # Change resolution (this will stop, reconfigure, and restart camera)
+            camera.set_resolution(req.width, req.height)
 
-        # Restart streaming if requested and was previously streaming
-        if req.restart_streaming and was_streaming:
-            logger.info("Restarting streaming after resolution change")
-            streaming.start()
+            # Restart streaming if requested and was previously streaming
+            if req.restart_streaming and was_streaming:
+                logger.info("Restarting streaming after resolution change")
+                streaming.start()
 
-        return StatusResponse()
-    except (CameraNotAvailableError, InvalidParameterError):
-        raise
-    except Exception as e:
-        logger.error(f"Error setting resolution: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to set resolution",
-        )
+            return StatusResponse()
+        except (CameraNotAvailableError, InvalidParameterError):
+            raise
+        except Exception as e:
+            logger.error(f"Error setting resolution: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to set resolution",
+            )
 
 
 @app.post(
@@ -1708,29 +1715,31 @@ def set_framerate(
     """
     logger.info(f"Setting framerate: {req.framerate}fps")
 
-    try:
-        # Check if streaming is active
-        was_streaming = streaming.is_streaming()
+    # Use global lock to prevent concurrent reconfiguration operations
+    with _reconfiguration_lock:
+        try:
+            # Check if streaming is active
+            was_streaming = streaming.is_streaming()
 
-        # Stop streaming if active (must stop encoder first)
-        if was_streaming:
-            logger.info("Stopping streaming before framerate change")
-            streaming.stop()
+            # Stop streaming if active (must stop encoder first)
+            if was_streaming:
+                logger.info("Stopping streaming before framerate change")
+                streaming.stop()
 
-        # Change framerate (this will stop, reconfigure, and restart camera)
-        result = camera.set_framerate(req.framerate)
+            # Change framerate (this will stop, reconfigure, and restart camera)
+            result = camera.set_framerate(req.framerate)
 
-        # Restart streaming if requested and was previously streaming
-        if req.restart_streaming and was_streaming:
-            logger.info("Restarting streaming after framerate change")
-            streaming.start()
+            # Restart streaming if requested and was previously streaming
+            if req.restart_streaming and was_streaming:
+                logger.info("Restarting streaming after framerate change")
+                streaming.start()
 
-        return FramerateResponse(**result)
-    except (CameraNotAvailableError, InvalidParameterError):
-        raise
-    except Exception as e:
-        logger.error(f"Error setting framerate: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to set framerate",
-        )
+            return FramerateResponse(**result)
+        except (CameraNotAvailableError, InvalidParameterError):
+            raise
+        except Exception as e:
+            logger.error(f"Error setting framerate: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to set framerate",
+            )
