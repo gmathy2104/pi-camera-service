@@ -195,11 +195,19 @@ class CameraController:
                 else:
                     self._picam2 = Picamera2()
 
-                # Create video configuration
+                # Get sensor resolution for full FOV
+                sensor_resolution = self._picam2.sensor_resolution
+
+                # Create video configuration with full sensor readout (no crop)
+                # This ensures the field of view stays constant across all output resolutions
                 video_config = self._picam2.create_video_configuration(
                     main={
                         "size": (CONFIG.width, CONFIG.height),
                         "format": "YUV420",
+                    },
+                    sensor={
+                        "output_size": sensor_resolution,  # Read full sensor area
+                        "bit_depth": 10,  # IMX708 native bit depth
                     },
                     controls={
                         "FrameRate": CONFIG.framerate,
@@ -1326,11 +1334,19 @@ class CameraController:
                     logger.debug("Stopping camera for resolution change")
                     self._picam2.stop()
 
+                # Get sensor resolution for full FOV
+                sensor_resolution = self._picam2.sensor_resolution
+
                 # Create new video configuration with desired resolution
+                # Use full sensor readout to maintain consistent field of view
                 new_config = self._picam2.create_video_configuration(
                     main={
                         "size": (width, height),
                         "format": "YUV420",
+                    },
+                    sensor={
+                        "output_size": sensor_resolution,  # Read full sensor area
+                        "bit_depth": 10,  # IMX708 native bit depth
                     },
                     controls={
                         "FrameRate": self._current_framerate,
@@ -1410,11 +1426,19 @@ class CameraController:
                     logger.debug("Stopping camera for framerate change")
                     self._picam2.stop()
 
+                # Get sensor resolution for full FOV
+                sensor_resolution = self._picam2.sensor_resolution
+
                 # Create new video configuration with new framerate
+                # Use full sensor readout to maintain consistent field of view
                 new_config = self._picam2.create_video_configuration(
                     main={
                         "size": (self._current_width, self._current_height),
                         "format": "YUV420",
+                    },
+                    sensor={
+                        "output_size": sensor_resolution,  # Read full sensor area
+                        "bit_depth": 10,  # IMX708 native bit depth
                     },
                     controls={
                         "FrameRate": applied_framerate,
