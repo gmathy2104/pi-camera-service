@@ -26,6 +26,7 @@ from camera_service.exceptions import (
     StreamingError,
 )
 from camera_service.streaming_manager import StreamingManager
+from camera_service.system_monitor import SystemMonitor
 
 # Configure logging
 logging.basicConfig(
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 # Global instances (initialized in lifespan)
 camera_controller: CameraController | None = None
 streaming_manager: StreamingManager | None = None
+system_monitor: SystemMonitor | None = None
 
 # Global lock for camera reconfiguration operations
 # Protects sequences that require stopping/reconfiguring/restarting streaming
@@ -108,6 +110,24 @@ def get_streaming_manager() -> StreamingManager:
     return streaming_manager
 
 
+def get_system_monitor() -> SystemMonitor:
+    """
+    Dependency injection for system monitor.
+
+    Returns:
+        SystemMonitor: The global system monitor instance
+
+    Raises:
+        HTTPException: If system monitor is not initialized
+    """
+    if system_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="System monitor not initialized",
+        )
+    return system_monitor
+
+
 # Lifespan context manager for startup/shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -116,7 +136,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     Initializes camera and streaming on startup, cleans up on shutdown.
     """
-    global camera_controller, streaming_manager
+    global camera_controller, streaming_manager, system_monitor
 
     logger.info("=== Pi Camera Service Starting ===")
     logger.info(f"Configuration: {CONFIG.width}x{CONFIG.height}@{CONFIG.framerate}fps")
@@ -130,6 +150,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Initialize streaming manager
         streaming_manager = StreamingManager(camera_controller)
+
+        # Initialize system monitor
+        system_monitor = SystemMonitor()
+        logger.info("System monitor initialized")
         streaming_manager.start()
 
         logger.info("=== Pi Camera Service Started Successfully ===")
@@ -168,7 +192,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="2.4.0",
+    version="2.5.0",
     lifespan=lifespan,
 )
 
@@ -432,6 +456,19 @@ class FramerateResponse(BaseModel):
     clamped: bool = Field(..., description="Whether the framerate was clamped to maximum")
 
 
+# ========== New v2.5 Models ==========
+
+class SystemStatusResponse(BaseModel):
+    """System status response model."""
+    temperature: Optional[dict] = Field(None, description="CPU temperature info")
+    cpu: Optional[dict] = Field(None, description="CPU usage and load average")
+    memory: Optional[dict] = Field(None, description="Memory usage statistics")
+    network: Optional[dict] = Field(None, description="Network statistics including WiFi")
+    disk: Optional[dict] = Field(None, description="Disk usage statistics")
+    uptime: dict = Field(..., description="System and service uptime")
+    throttled: Optional[dict] = Field(None, description="Throttling status (Pi-specific)")
+
+
 # ========== Exception Handlers ==========
 
 @app.exception_handler(InvalidParameterError)
@@ -491,7 +528,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="2.4.0",
+        version="2.5.0",
     )
 
 
@@ -1857,4 +1894,55 @@ def set_fov_mode(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to set FOV mode",
+        )
+
+
+# ========== System Status Endpoints (v2.5) ==========
+
+@app.get(
+    "/v1/system/status",
+    response_model=SystemStatusResponse,
+    summary="Get system status",
+    description="Get comprehensive system metrics including temperature, CPU, memory, network, and disk usage",
+    tags=["System"],
+)
+def get_system_status(
+    monitor: Annotated[SystemMonitor, Depends(get_system_monitor)],
+    _: Annotated[None, Depends(verify_api_key)],
+) -> SystemStatusResponse:
+    """
+    Get comprehensive system status metrics.
+
+    Returns hardware and system information including:
+    - CPU temperature and thermal status
+    - CPU usage percentage and load average
+    - Memory (RAM) usage statistics
+    - Network statistics (WiFi signal, bandwidth)
+    - Disk usage statistics
+    - System and service uptime
+    - Throttling status (Raspberry Pi specific)
+
+    This endpoint is useful for monitoring the health of the Raspberry Pi
+    running the camera service, especially for:
+    - Detecting thermal throttling issues
+    - Monitoring network connectivity quality
+    - Checking resource usage (CPU, memory, disk)
+    - Verifying system stability
+
+    Returns:
+        SystemStatusResponse: Comprehensive system metrics
+
+    Raises:
+        HTTPException: If system monitor is not available
+    """
+    logger.debug("Getting system status")
+
+    try:
+        status_data = monitor.get_status()
+        return SystemStatusResponse(**status_data)
+    except Exception as e:
+        logger.error(f"Error getting system status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get system status",
         )

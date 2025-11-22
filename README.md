@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.4.0** - FOV mode selection (scale/crop) + Dynamic framerate control!
+**Version 2.5.0** - System monitoring (temperature, CPU, WiFi, network, disk) + FOV mode + Framerate control!
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🆕 **New in v2.4**: **FOV mode selection** - Choose between constant field of view (scale) or digital zoom effect (crop) for all resolutions. Perfect control for surveillance or telephoto applications!
+> 🆕 **New in v2.5**: **System Monitoring** - Real-time Raspberry Pi health metrics including CPU temperature, WiFi signal quality, memory/disk usage, and throttling detection. Monitor your Pi's health alongside your camera!
+>
+> ℹ️ **v2.4 features**: FOV mode selection - Choose between constant field of view (scale) or digital zoom effect (crop) for all resolutions.
 >
 > ℹ️ **v2.3 features**: Dynamic framerate control with intelligent clamping. Fixed critical race condition in concurrent camera reconfiguration.
 >
@@ -210,6 +212,85 @@ This service runs **on the Raspberry Pi**, controls the camera (e.g., Raspberry 
   - `max_framerate_for_current_resolution`: Maximum fps for active resolution
   - `framerate_limits_by_resolution`: Complete table of max fps for each resolution
 
+### Advanced Features (v2.5) 🆕
+
+#### 🖥️ System Monitoring & Health Metrics
+
+Monitor your Raspberry Pi's health in real-time alongside camera operations:
+
+- **CPU Temperature Monitoring**
+  - Real-time CPU/GPU temperature in Celsius
+  - Status classification (normal/warm/hot/critical)
+  - Thermal throttling detection
+  - Critical for long-running video encoding
+
+- **CPU & Memory Usage**
+  - CPU usage percentage
+  - Load average (1min, 5min, 15min)
+  - RAM usage (total, used, available)
+  - Memory percentage
+
+- **WiFi Signal Quality**
+  - Signal strength in dBm
+  - Quality percentage (0-100%)
+  - Status classification (excellent/good/fair/weak)
+  - Active network interface detection
+  - Perfect for remote camera deployments
+
+- **Network Statistics**
+  - Bytes sent/received
+  - Packets sent/received
+  - Network interface info (wlan0/eth0)
+  - Monitor bandwidth usage
+
+- **Disk Usage**
+  - Total/used/free space in GB
+  - Usage percentage
+  - Prevent storage issues during recording
+
+- **System Uptime**
+  - System uptime in seconds/days
+  - Service uptime tracking
+  - Monitor stability
+
+- **Raspberry Pi Throttling Detection**
+  - Under-voltage detection
+  - Frequency capping detection
+  - Temperature-based throttling
+  - Historical throttling events
+  - Essential for power supply diagnostics
+
+**Endpoint**: `GET /v1/system/status`
+
+**Example Response**:
+```json
+{
+  "temperature": {"cpu_c": 50.7, "status": "normal"},
+  "cpu": {"usage_percent": 32.5, "load_average": {...}, "cores": 4},
+  "memory": {"total_mb": 16219, "percent": 8.4},
+  "network": {
+    "wifi": {"signal_dbm": -70, "quality_percent": 60, "status": "fair"},
+    "interface": "wlan0",
+    "bytes_sent": 18863322109,
+    "bytes_received": 11251936223
+  },
+  "disk": {"total_gb": 234.6, "percent": 1.7},
+  "uptime": {"service_seconds": 8.3, "system_days": 0.2},
+  "throttled": {
+    "currently_throttled": false,
+    "under_voltage_detected": false,
+    "has_occurred": false
+  }
+}
+```
+
+**Use Cases**:
+- Monitor temperature during intensive video encoding
+- Detect WiFi signal degradation affecting streaming quality
+- Alert on thermal throttling or under-voltage issues
+- Track resource usage for optimization
+- Verify system stability for 24/7 deployments
+
 The video stream is published to MediaMTX, which then serves it via **RTSP / WebRTC / HLS**.
 
 ---
@@ -383,7 +464,7 @@ sudo journalctl -u pi-camera-service -f
   "status": "healthy",
   "camera_configured": true,
   "streaming_active": true,
-  "version": "2.4.0"
+  "version": "2.5.0"
 }
 ```
 
@@ -676,6 +757,63 @@ curl -X POST http://raspberrypi:8000/v1/camera/framerate \
 **POST** `/v1/streaming/start`
 
 **POST** `/v1/streaming/stop`
+
+### System Monitoring (v2.5)
+
+**GET** `/v1/system/status`
+
+Get comprehensive Raspberry Pi health metrics:
+
+```json
+{
+  "temperature": {
+    "cpu_c": 50.7,
+    "status": "normal"
+  },
+  "cpu": {
+    "usage_percent": 32.5,
+    "load_average": {
+      "1min": 0.88,
+      "5min": 0.62,
+      "15min": 0.56
+    },
+    "cores": 4
+  },
+  "memory": {
+    "total_mb": 16219.1,
+    "used_mb": 1364.6,
+    "available_mb": 14854.5,
+    "percent": 8.4
+  },
+  "network": {
+    "bytes_sent": 18863322109,
+    "bytes_received": 11251936223,
+    "wifi": {
+      "signal_dbm": -70,
+      "quality_percent": 60,
+      "status": "fair"
+    },
+    "interface": "wlan0"
+  },
+  "disk": {
+    "total_gb": 234.6,
+    "used_gb": 3.8,
+    "free_gb": 218.9,
+    "percent": 1.7
+  },
+  "uptime": {
+    "service_seconds": 8.3,
+    "system_seconds": 13949.0,
+    "system_days": 0.2
+  },
+  "throttled": {
+    "currently_throttled": false,
+    "under_voltage_detected": false,
+    "frequency_capped": false,
+    "has_occurred": false
+  }
+}
+```
 
 📖 **Complete API Documentation**: See [docs/api-reference.md](docs/api-reference.md)
 

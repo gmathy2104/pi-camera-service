@@ -1053,6 +1053,160 @@ if status['lux'] < 10:  # Low light
 
 ---
 
+## System Monitoring Endpoints (v2.5)
+
+### GET /v1/system/status
+
+Get comprehensive Raspberry Pi system health metrics.
+
+**Authentication:** Required (if configured)
+
+**Response:**
+```json
+{
+  "temperature": {
+    "cpu_c": 50.7,
+    "status": "normal"
+  },
+  "cpu": {
+    "usage_percent": 32.5,
+    "load_average": {
+      "1min": 0.88,
+      "5min": 0.62,
+      "15min": 0.56
+    },
+    "cores": 4
+  },
+  "memory": {
+    "total_mb": 16219.1,
+    "used_mb": 1364.6,
+    "available_mb": 14854.5,
+    "percent": 8.4
+  },
+  "network": {
+    "bytes_sent": 18863322109,
+    "bytes_received": 11251936223,
+    "packets_sent": 6849046,
+    "packets_received": 2162715,
+    "wifi": {
+      "signal_dbm": -70,
+      "quality_percent": 60,
+      "status": "fair"
+    },
+    "interface": "wlan0"
+  },
+  "disk": {
+    "total_gb": 234.6,
+    "used_gb": 3.8,
+    "free_gb": 218.9,
+    "percent": 1.7
+  },
+  "uptime": {
+    "service_seconds": 8.3,
+    "system_seconds": 13949.0,
+    "system_days": 0.2
+  },
+  "throttled": {
+    "currently_throttled": false,
+    "under_voltage_detected": false,
+    "frequency_capped": false,
+    "currently_throttled_temperature": false,
+    "has_occurred": false,
+    "raw_value": "0x0"
+  }
+}
+```
+
+**Response Fields:**
+
+**temperature** (optional):
+- `cpu_c` (float): CPU/GPU temperature in Celsius
+- `status` (string): Temperature status - "normal" (< 60°C), "warm" (60-70°C), "hot" (70-80°C), "critical" (> 80°C)
+
+**cpu** (optional):
+- `usage_percent` (float): Current CPU usage percentage
+- `load_average` (dict): System load average
+  - `1min` (float): 1-minute load average
+  - `5min` (float): 5-minute load average
+  - `15min` (float): 15-minute load average
+- `cores` (int): Number of CPU cores
+
+**memory** (optional):
+- `total_mb` (float): Total RAM in megabytes
+- `used_mb` (float): Used RAM in megabytes
+- `available_mb` (float): Available RAM in megabytes
+- `percent` (float): Memory usage percentage
+
+**network** (optional):
+- `bytes_sent` (int): Total bytes sent since boot
+- `bytes_received` (int): Total bytes received since boot
+- `packets_sent` (int): Total packets sent
+- `packets_received` (int): Total packets received
+- `wifi` (optional): WiFi signal information
+  - `signal_dbm` (int): Signal strength in dBm
+  - `quality_percent` (float): Signal quality percentage (0-100)
+  - `status` (string): Signal status - "excellent" (≥ -50 dBm), "good" (-50 to -60), "fair" (-60 to -70), "weak" (< -70)
+- `interface` (string): Active network interface (e.g., "wlan0", "eth0")
+
+**disk** (optional):
+- `total_gb` (float): Total disk space in gigabytes
+- `used_gb` (float): Used disk space in gigabytes
+- `free_gb` (float): Free disk space in gigabytes
+- `percent` (float): Disk usage percentage
+
+**uptime**:
+- `service_seconds` (float): Service uptime in seconds
+- `system_seconds` (float, optional): System uptime in seconds
+- `system_days` (float, optional): System uptime in days
+
+**throttled** (optional, Raspberry Pi specific):
+- `currently_throttled` (bool): Currently being throttled
+- `under_voltage_detected` (bool): Under-voltage detected
+- `frequency_capped` (bool): CPU frequency is capped
+- `currently_throttled_temperature` (bool): Currently throttled due to temperature
+- `has_occurred` (bool): Any throttling has occurred since boot
+- `raw_value` (string): Raw hex value from vcgencmd
+
+**Example:**
+```bash
+curl -H "X-API-Key: your-key" http://<PI_IP>:8000/v1/system/status
+```
+
+**Python Example:**
+```python
+import requests
+
+response = requests.get(
+    "http://<PI_IP>:8000/v1/system/status",
+    headers={"X-API-Key": "your-key"}
+)
+status = response.json()
+
+# Check temperature
+temp = status['temperature']
+print(f"CPU Temperature: {temp['cpu_c']}°C ({temp['status']})")
+
+# Check WiFi signal
+if 'wifi' in status['network']:
+    wifi = status['network']['wifi']
+    print(f"WiFi Signal: {wifi['signal_dbm']} dBm ({wifi['status']})")
+
+# Check throttling
+if status['throttled'] and status['throttled']['has_occurred']:
+    print("⚠️ Throttling detected! Check power supply and cooling.")
+```
+
+**When to Use:**
+- Monitor CPU temperature during intensive video encoding
+- Detect WiFi signal degradation affecting stream quality
+- Alert on thermal throttling or under-voltage (power supply issues)
+- Track memory and disk usage for long-running deployments
+- Verify system stability for 24/7 camera operations
+
+**Note:** Some metrics require `psutil` Python package and may not be available on all systems. Fields that are unavailable will be `null`.
+
+---
+
 ## Support
 
 For issues or questions:

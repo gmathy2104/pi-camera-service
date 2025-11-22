@@ -5,6 +5,60 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2025-11-22
+
+### Added
+
+#### System Monitoring Endpoint
+- **NEW FEATURE**: Comprehensive system health monitoring for Raspberry Pi
+  - `GET /v1/system/status` - Query system metrics in real-time
+  - Monitor CPU temperature and thermal status (normal/warm/hot/critical)
+  - Track CPU usage percentage and load average (1min, 5min, 15min)
+  - Monitor memory (RAM) usage and availability
+  - WiFi signal strength and quality (dBm, percentage, status)
+  - Network statistics (bytes/packets sent/received, active interface)
+  - Disk usage statistics (total, used, free space)
+  - System and service uptime tracking
+  - Raspberry Pi throttling detection (under-voltage, frequency capping, thermal throttling)
+
+#### System Monitoring Features
+- **Temperature Monitoring**: CPU temperature with status classification
+  - Normal: < 60°C
+  - Warm: 60-70°C
+  - Hot: 70-80°C
+  - Critical: > 80°C
+
+- **WiFi Quality Monitoring**: Signal strength classification
+  - Excellent: ≥ -50 dBm
+  - Good: -50 to -60 dBm
+  - Fair: -60 to -70 dBm
+  - Weak: < -70 dBm
+
+- **Throttling Detection**: Detect Raspberry Pi performance issues
+  - Under-voltage detection
+  - Frequency capping
+  - Temperature-based throttling
+  - Historical throttling events
+
+### Changed
+- Added `psutil>=5.9.0` dependency for system monitoring
+- Created new `SystemMonitor` class in `camera_service/system_monitor.py`
+- Enhanced API with system health visibility
+
+### Technical Details
+- New module: `camera_service/system_monitor.py`
+- New endpoint: `GET /v1/system/status` (requires authentication)
+- Graceful fallback when system tools are not available
+- Thread-safe implementation
+- Zero breaking changes - fully backwards compatible
+
+### Use Cases
+- Monitor Pi temperature during video encoding
+- Detect WiFi connectivity issues affecting streaming
+- Track resource usage for optimization
+- Alert on thermal throttling or under-voltage
+- Verify system stability for long-running deployments
+
 ## [2.4.0] - 2025-11-22
 
 ### Added
