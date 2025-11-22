@@ -113,6 +113,9 @@ class CameraController:
         self._current_height = CONFIG.height
         self._current_framerate = CONFIG.framerate
 
+        # Field of view mode: "scale" (constant FOV) or "crop" (digital zoom)
+        self._fov_mode = "scale"  # Default to scale for consistent FOV
+
         logger.info("=== CameraController v2.0 initialized with autofocus support ===" )
         logger.debug(f"Initialized with: autofocus_mode={self._autofocus_mode}, hdr_mode={self._hdr_mode}")
 
@@ -129,6 +132,33 @@ class CameraController:
         except Exception as e:
             logger.error(f"Error checking camera availability: {e}")
             return False
+
+    def _get_sensor_config(self) -> Optional[dict]:
+        """
+        Get sensor configuration based on current FOV mode.
+
+        Returns:
+            dict: Sensor config for create_video_configuration(), or None for crop mode
+
+        Notes:
+            - "scale" mode: Read full sensor area (4608x2592), downscale to output
+              → Constant field of view at all resolutions
+              → Better image quality (downsampling vs cropping)
+              → Slightly higher processing load
+
+            - "crop" mode: Read only the required sensor area
+              → Digital zoom effect (FOV reduces at lower resolutions)
+              → Lower processing load
+              → Useful for telephoto/zoom applications
+        """
+        if self._fov_mode == "scale" and self._picam2 is not None:
+            sensor_resolution = self._picam2.sensor_resolution
+            return {
+                "output_size": sensor_resolution,  # Read full sensor area
+                "bit_depth": 10,  # IMX708 native bit depth
+            }
+        # crop mode: return None to let libcamera choose sensor crop
+        return None
 
     def _detect_tuning_file(self) -> Optional[str]:
         """
@@ -195,25 +225,25 @@ class CameraController:
                 else:
                     self._picam2 = Picamera2()
 
-                # Get sensor resolution for full FOV
-                sensor_resolution = self._picam2.sensor_resolution
-
-                # Create video configuration with full sensor readout (no crop)
-                # This ensures the field of view stays constant across all output resolutions
-                video_config = self._picam2.create_video_configuration(
-                    main={
+                # Build configuration dict
+                config_dict = {
+                    "main": {
                         "size": (CONFIG.width, CONFIG.height),
                         "format": "YUV420",
                     },
-                    sensor={
-                        "output_size": sensor_resolution,  # Read full sensor area
-                        "bit_depth": 10,  # IMX708 native bit depth
-                    },
-                    controls={
+                    "controls": {
                         "FrameRate": CONFIG.framerate,
                         "AfMode": 2,  # Continuous autofocus by default
                     },
-                )
+                }
+
+                # Add sensor config if in scale mode (constant FOV)
+                sensor_config = self._get_sensor_config()
+                if sensor_config is not None:
+                    config_dict["sensor"] = sensor_config
+
+                # Create video configuration
+                video_config = self._picam2.create_video_configuration(**config_dict)
                 self._picam2.configure(video_config)
 
                 logger.info(
@@ -435,6 +465,7 @@ class CameraController:
                     "day_night_threshold_lux": self._day_night_threshold_lux,
                     "frame_duration_us": frame_duration,
                     "sensor_black_levels": meta.get("SensorBlackLevels"),
+                    "fov_mode": self._fov_mode,
 
                     # Current limits (v2.2)
                     "current_limits": current_limits,
@@ -1300,6 +1331,40 @@ class CameraController:
             self._picam2.set_controls({"AfTrigger": 0})  # 0 = Start
             logger.info("Autofocus triggered")
 
+    def set_fov_mode(self, mode: str) -> None:
+        """
+        Set field of view mode (scale or crop).
+
+        Args:
+            mode: FOV mode - "scale" (constant FOV) or "crop" (digital zoom)
+                  - "scale": Read full sensor, downscale to output → constant FOV
+                  - "crop": Read only needed sensor area → FOV changes with resolution
+
+        Raises:
+            InvalidParameterError: If mode is not valid
+
+        Note:
+            This only changes the mode. You need to reconfigure the camera
+            (e.g., by changing resolution) for it to take effect.
+        """
+        valid_modes = ["scale", "crop"]
+        if mode not in valid_modes:
+            raise InvalidParameterError(
+                f"Invalid FOV mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
+            )
+
+        self._fov_mode = mode
+        logger.info(f"FOV mode set to: {mode}")
+
+    def get_fov_mode(self) -> str:
+        """
+        Get current field of view mode.
+
+        Returns:
+            str: Current FOV mode ("scale" or "crop")
+        """
+        return self._fov_mode
+
     def set_resolution(self, width: int, height: int) -> None:
         """
         Change camera resolution by stopping and reconfiguring.
@@ -1334,25 +1399,25 @@ class CameraController:
                     logger.debug("Stopping camera for resolution change")
                     self._picam2.stop()
 
-                # Get sensor resolution for full FOV
-                sensor_resolution = self._picam2.sensor_resolution
-
-                # Create new video configuration with desired resolution
-                # Use full sensor readout to maintain consistent field of view
-                new_config = self._picam2.create_video_configuration(
-                    main={
+                # Build configuration dict
+                config_dict = {
+                    "main": {
                         "size": (width, height),
                         "format": "YUV420",
                     },
-                    sensor={
-                        "output_size": sensor_resolution,  # Read full sensor area
-                        "bit_depth": 10,  # IMX708 native bit depth
-                    },
-                    controls={
+                    "controls": {
                         "FrameRate": self._current_framerate,
                         "AfMode": 2,  # Maintain continuous autofocus
                     },
-                )
+                }
+
+                # Add sensor config based on FOV mode
+                sensor_config = self._get_sensor_config()
+                if sensor_config is not None:
+                    config_dict["sensor"] = sensor_config
+
+                # Create new video configuration with desired resolution
+                new_config = self._picam2.create_video_configuration(**config_dict)
 
                 # Apply new configuration
                 self._picam2.configure(new_config)
@@ -1426,25 +1491,25 @@ class CameraController:
                     logger.debug("Stopping camera for framerate change")
                     self._picam2.stop()
 
-                # Get sensor resolution for full FOV
-                sensor_resolution = self._picam2.sensor_resolution
-
-                # Create new video configuration with new framerate
-                # Use full sensor readout to maintain consistent field of view
-                new_config = self._picam2.create_video_configuration(
-                    main={
+                # Build configuration dict
+                config_dict = {
+                    "main": {
                         "size": (self._current_width, self._current_height),
                         "format": "YUV420",
                     },
-                    sensor={
-                        "output_size": sensor_resolution,  # Read full sensor area
-                        "bit_depth": 10,  # IMX708 native bit depth
-                    },
-                    controls={
+                    "controls": {
                         "FrameRate": applied_framerate,
                         "AfMode": 2,  # Maintain continuous autofocus
                     },
-                )
+                }
+
+                # Add sensor config based on FOV mode
+                sensor_config = self._get_sensor_config()
+                if sensor_config is not None:
+                    config_dict["sensor"] = sensor_config
+
+                # Create new video configuration with new framerate
+                new_config = self._picam2.create_video_configuration(**config_dict)
 
                 # Apply new configuration
                 self._picam2.configure(new_config)

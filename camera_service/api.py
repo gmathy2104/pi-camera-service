@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from threading import RLock
-from typing import Annotated, AsyncGenerator
+from typing import Annotated, AsyncGenerator, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader
@@ -227,6 +227,7 @@ class CameraStatusResponse(BaseModel):
     day_night_threshold_lux: float | None = Field(None, description="Lux threshold for day/night")
     frame_duration_us: int | None = Field(None, description="Frame duration in microseconds")
     sensor_black_levels: list[int] | None = Field(None, description="Sensor black levels")
+    fov_mode: str | None = Field(None, description="Field of view mode (scale/crop)")
 
     # Current limits (v2.2)
     current_limits: dict | None = Field(None, description="Currently applied exposure/frame duration limits")
@@ -401,12 +402,24 @@ class ResolutionRequest(BaseModel):
     width: int = Field(..., ge=64, le=4096, description="Video width in pixels")
     height: int = Field(..., ge=64, le=4096, description="Video height in pixels")
     restart_streaming: bool = Field(True, description="Restart streaming after resolution change")
+    fov_mode: Optional[str] = Field(None, description="FOV mode: 'scale' (constant FOV) or 'crop' (zoom)")
 
 
 class FramerateRequest(BaseModel):
     """Request model for framerate change."""
     framerate: float = Field(..., gt=0, le=1000, description="Desired framerate in fps")
     restart_streaming: bool = Field(True, description="Restart streaming after framerate change")
+
+
+class FovModeRequest(BaseModel):
+    """Request model for FOV mode change."""
+    mode: str = Field(..., description="FOV mode: 'scale' (constant FOV) or 'crop' (zoom)")
+
+
+class FovModeResponse(BaseModel):
+    """Response model for FOV mode."""
+    mode: str = Field(..., description="Current FOV mode")
+    description: str = Field(..., description="Description of the current mode")
 
 
 class FramerateResponse(BaseModel):
@@ -528,6 +541,7 @@ def get_camera_status(
             day_night_threshold_lux=status_data.get("day_night_threshold_lux"),
             frame_duration_us=status_data.get("frame_duration_us"),
             sensor_black_levels=status_data.get("sensor_black_levels"),
+            fov_mode=status_data.get("fov_mode"),
 
             # Current limits (v2.2)
             current_limits=status_data.get("current_limits"),
@@ -1651,6 +1665,11 @@ def set_resolution(
     # Use global lock to prevent concurrent reconfiguration operations
     with _reconfiguration_lock:
         try:
+            # Set FOV mode if specified
+            if req.fov_mode is not None:
+                camera.set_fov_mode(req.fov_mode)
+                logger.info(f"FOV mode set to: {req.fov_mode}")
+
             # Check if streaming is active
             was_streaming = streaming.is_streaming()
 
@@ -1743,3 +1762,99 @@ def set_framerate(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to set framerate",
             )
+
+
+@app.get(
+    "/v1/camera/fov_mode",
+    response_model=FovModeResponse,
+    summary="Get FOV mode",
+    tags=["Camera"],
+)
+def get_fov_mode(
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+    _: Annotated[None, Depends(verify_api_key)],
+) -> FovModeResponse:
+    """
+    Get current field of view mode.
+
+    Returns information about the current FOV mode (scale or crop) and its
+    description.
+
+    Returns:
+        FovModeResponse: Current FOV mode details
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    try:
+        mode = camera.get_fov_mode()
+        description = (
+            "Full sensor readout with downscaling → Constant field of view"
+            if mode == "scale"
+            else "Sensor crop → Digital zoom effect (FOV reduces at lower resolutions)"
+        )
+        return FovModeResponse(mode=mode, description=description)
+    except Exception as e:
+        logger.error(f"Error getting FOV mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get FOV mode",
+        )
+
+
+@app.post(
+    "/v1/camera/fov_mode",
+    response_model=FovModeResponse,
+    summary="Set FOV mode",
+    tags=["Camera"],
+)
+def set_fov_mode(
+    req: FovModeRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+    _: Annotated[None, Depends(verify_api_key)],
+) -> FovModeResponse:
+    """
+    Set field of view mode (scale or crop).
+
+    Modes:
+    - "scale": Read full sensor area, downscale to output resolution
+      → Constant field of view at all resolutions
+      → Better image quality (downsampling vs cropping)
+      → Slightly higher processing load
+      → Recommended for most use cases
+
+    - "crop": Read only the required sensor area for target resolution
+      → Digital zoom effect (FOV reduces at lower resolutions)
+      → Lower processing load
+      → Useful for telephoto/zoom applications
+
+    Note: The new mode will take effect on the next resolution/framerate change
+    or camera reconfiguration.
+
+    Args:
+        req: FOV mode request with mode ("scale" or "crop")
+
+    Returns:
+        FovModeResponse: New FOV mode and description
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting FOV mode: {req.mode}")
+
+    try:
+        camera.set_fov_mode(req.mode)
+        description = (
+            "Full sensor readout with downscaling → Constant field of view"
+            if req.mode == "scale"
+            else "Sensor crop → Digital zoom effect (FOV reduces at lower resolutions)"
+        )
+        return FovModeResponse(mode=req.mode, description=description)
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting FOV mode: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set FOV mode",
+        )
