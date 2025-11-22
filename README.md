@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.6.0** - Intelligent sensor mode selection for optimal framerate performance!
+**Version 2.6.1** - Intelligent bitrate auto-selection prevents encoding errors!
 
-[![Version](https://img.shields.io/badge/version-2.6.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🔥 **New in v2.6**: **Intelligent Sensor Mode Auto-Selection** - Camera Module 3 (IMX708) now automatically selects optimal native sensor mode for each resolution. **Performance boost: 720p now achieves 60fps (was 14fps) - 4.2x faster!** All resolutions below 4K benefit from massive framerate improvements.
+> 🔥 **New in v2.6.1**: **Intelligent Bitrate Auto-Selection** - Automatic bitrate calculation prevents corrupted macroblock errors. Bitrate now adapts to resolution×framerate (12 Mbps @ 720p/60fps, 25 Mbps @ 1080p/60fps). Visible in status endpoint!
+>
+> ⚡ **v2.6 features**: **Intelligent Sensor Mode Auto-Selection** - Camera Module 3 (IMX708) automatically selects optimal native sensor mode. 720p achieves 60fps (was 14fps) - 4.2x faster!
 >
 > 🆕 **v2.5 features**: **System Monitoring** - Real-time Raspberry Pi health metrics including CPU temperature, WiFi signal quality, memory/disk usage, and throttling detection.
 >

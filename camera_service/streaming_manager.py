@@ -66,8 +66,11 @@ class StreamingManager:
                     logger.debug("Camera not started, starting it now...")
                     picam2.start()
 
-                # Create H.264 encoder
-                self._encoder = H264Encoder(bitrate=CONFIG.bitrate)
+                # Get optimal bitrate from camera controller
+                bitrate = self._camera.get_current_bitrate()
+
+                # Create H.264 encoder with calculated bitrate
+                self._encoder = H264Encoder(bitrate=bitrate)
 
                 # Create RTSP output via ffmpeg
                 self._output = FfmpegOutput(
@@ -81,7 +84,7 @@ class StreamingManager:
 
                 logger.info(
                     f"Streaming started successfully to {CONFIG.rtsp_url} "
-                    f"(bitrate={CONFIG.bitrate}bps)"
+                    f"(bitrate={bitrate / 1_000_000:.1f} Mbps)"
                 )
 
             except Exception as e:

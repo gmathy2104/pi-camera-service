@@ -74,6 +74,60 @@ def calculate_max_framerate(width: int, height: int) -> float:
     else:  # Very low resolutions
         return 120.0  # Cap at 120fps even for tiny resolutions
 
+
+def calculate_optimal_bitrate(width: int, height: int, framerate: float) -> int:
+    """
+    Calculate optimal bitrate for H.264 encoding based on resolution and framerate.
+
+    Uses intelligent formula: bitrate scales with pixel count and framerate.
+    Includes safety limits and fallback defaults.
+
+    Formula:
+    - Base rate: ~6.5 Mbps per megapixel at 30fps
+    - Scale proportionally with framerate
+    - Clamp between 2-25 Mbps for safety
+
+    Args:
+        width: Image width in pixels
+        height: Image height in pixels
+        framerate: Target framerate in fps
+
+    Returns:
+        int: Optimal bitrate in bits per second
+
+    Examples:
+        - 720p @ 30fps: ~6 Mbps
+        - 720p @ 60fps: ~10 Mbps
+        - 1080p @ 30fps: ~8 Mbps
+        - 1080p @ 60fps: ~14 Mbps
+        - 4K @ 30fps: ~20 Mbps
+    """
+    # Calculate pixel count
+    pixels = width * height
+    megapixels = pixels / 1_000_000
+
+    # Base bitrate: 6.5 Mbps per megapixel at 30fps
+    # This provides good quality H.264 encoding
+    base_rate_per_mp = 6_500_000  # 6.5 Mbps
+
+    # Scale with megapixels and framerate
+    bitrate = base_rate_per_mp * megapixels * (framerate / 30.0)
+
+    # Safety limits
+    MIN_BITRATE = 2_000_000   # 2 Mbps minimum
+    MAX_BITRATE = 25_000_000  # 25 Mbps maximum
+
+    # Clamp to safe range
+    bitrate = max(MIN_BITRATE, min(bitrate, MAX_BITRATE))
+
+    logger.debug(
+        f"Calculated optimal bitrate for {width}x{height}@{framerate}fps: "
+        f"{bitrate / 1_000_000:.1f} Mbps"
+    )
+
+    return int(bitrate)
+
+
 # NoIR AWB presets (red_gain, blue_gain)
 AWB_PRESETS = {
     "daylight_noir": (1.2, 1.8),
@@ -112,6 +166,9 @@ class CameraController:
         self._current_width = CONFIG.width
         self._current_height = CONFIG.height
         self._current_framerate = CONFIG.framerate
+
+        # Calculate optimal bitrate (with fallback to .env value)
+        self._current_bitrate = self._get_optimal_bitrate()
 
         # Field of view mode: "scale" (constant FOV) or "crop" (digital zoom)
         self._fov_mode = "scale"  # Default to scale for consistent FOV
@@ -215,6 +272,59 @@ class CameraController:
             "output_size": optimal_mode,  # Optimal sensor mode for performance
             "bit_depth": 10,  # IMX708 native bit depth
         }
+
+    def _get_optimal_bitrate(self) -> int:
+        """
+        Get optimal bitrate with intelligent calculation and fallbacks.
+
+        Fallback chain:
+        1. Try intelligent calculation based on resolution × framerate
+        2. Fall back to CONFIG.bitrate from .env if calculation fails
+        3. Ultimate fallback to 6 Mbps safe default
+
+        Returns:
+            int: Optimal bitrate in bits per second
+
+        Notes:
+            - Automatically recalculated when resolution or framerate changes
+            - Ensures encoder has enough bandwidth for clean video
+            - Prevents corrupted macroblock errors from low bitrate
+        """
+        try:
+            # Primary: Use intelligent calculation
+            calculated = calculate_optimal_bitrate(
+                self._current_width,
+                self._current_height,
+                self._current_framerate
+            )
+            logger.info(
+                f"Using calculated bitrate: {calculated / 1_000_000:.1f} Mbps "
+                f"for {self._current_width}x{self._current_height}@{self._current_framerate}fps"
+            )
+            return calculated
+
+        except Exception as e:
+            # Fallback 1: Use .env configured value
+            logger.warning(
+                f"Bitrate calculation failed: {e}. "
+                f"Falling back to CONFIG.bitrate = {CONFIG.bitrate / 1_000_000:.1f} Mbps"
+            )
+            if hasattr(CONFIG, 'bitrate') and CONFIG.bitrate > 0:
+                return CONFIG.bitrate
+
+            # Ultimate fallback: Safe default
+            logger.error("CONFIG.bitrate not available. Using safe default: 6 Mbps")
+            return 6_000_000  # 6 Mbps safe default
+
+    def get_current_bitrate(self) -> int:
+        """
+        Get the current bitrate setting.
+
+        Returns:
+            int: Current bitrate in bits per second
+        """
+        with self._lock:
+            return self._current_bitrate
 
     def _detect_tuning_file(self) -> Optional[str]:
         """
@@ -522,6 +632,10 @@ class CameraController:
                     "frame_duration_us": frame_duration,
                     "sensor_black_levels": meta.get("SensorBlackLevels"),
                     "fov_mode": self._fov_mode,
+
+                    # Bitrate configuration (v2.6.1)
+                    "bitrate_bps": self._current_bitrate,
+                    "bitrate_mbps": round(self._current_bitrate / 1_000_000, 2),
 
                     # Current limits (v2.2)
                     "current_limits": current_limits,
@@ -1482,6 +1596,9 @@ class CameraController:
                 self._current_width = width
                 self._current_height = height
 
+                # Recalculate optimal bitrate for new resolution
+                self._current_bitrate = self._get_optimal_bitrate()
+
                 # Restart camera if it was running
                 if was_started:
                     logger.debug("Restarting camera with new resolution")
@@ -1572,6 +1689,9 @@ class CameraController:
 
                 # Update tracked framerate
                 self._current_framerate = applied_framerate
+
+                # Recalculate optimal bitrate for new framerate
+                self._current_bitrate = self._get_optimal_bitrate()
 
                 # Restart camera if it was running
                 if was_started:

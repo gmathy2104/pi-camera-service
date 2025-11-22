@@ -253,6 +253,10 @@ class CameraStatusResponse(BaseModel):
     sensor_black_levels: list[int] | None = Field(None, description="Sensor black levels")
     fov_mode: str | None = Field(None, description="Field of view mode (scale/crop)")
 
+    # Bitrate configuration (v2.6.1)
+    bitrate_bps: int | None = Field(None, description="Current bitrate in bits per second")
+    bitrate_mbps: float | None = Field(None, description="Current bitrate in megabits per second")
+
     # Current limits (v2.2)
     current_limits: dict | None = Field(None, description="Currently applied exposure/frame duration limits")
 
@@ -579,6 +583,10 @@ def get_camera_status(
             frame_duration_us=status_data.get("frame_duration_us"),
             sensor_black_levels=status_data.get("sensor_black_levels"),
             fov_mode=status_data.get("fov_mode"),
+
+            # Bitrate configuration (v2.6.1)
+            bitrate_bps=status_data.get("bitrate_bps"),
+            bitrate_mbps=status_data.get("bitrate_mbps"),
 
             # Current limits (v2.2)
             current_limits=status_data.get("current_limits"),

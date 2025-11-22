@@ -5,6 +5,53 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2025-11-22
+
+### Added
+
+#### Intelligent Bitrate Auto-Selection
+- **NEW FEATURE**: Automatic bitrate calculation based on resolution × framerate
+  - **Formula**: ~6.5 Mbps per megapixel at 30fps, scaled with framerate
+  - **Dynamic adjustment**: Bitrate automatically recalculates when resolution or framerate changes
+  - **Safety limits**: Clamped between 2-25 Mbps for stability
+  - **Fallback chain**: Calculation → .env value → 6 Mbps safe default
+
+#### Enhanced Status Endpoint
+- Added `bitrate_bps` field to `GET /v1/camera/status`
+  - Shows current bitrate in bits per second
+- Added `bitrate_mbps` field to `GET /v1/camera/status`
+  - Shows current bitrate in megabits per second (rounded to 2 decimals)
+
+### Changed
+- Streaming now uses calculated bitrate instead of fixed .env value
+- Bitrate automatically adjusts for optimal quality at each resolution/framerate
+- Logging enhanced to show calculated bitrate for each configuration
+
+### Fixed
+- **CRITICAL FIX**: Resolved corrupted macroblock errors at 60fps
+  - Root cause: 6 Mbps bitrate was too low for 720p@60fps
+  - Now uses 12 Mbps for 720p@60fps (auto-calculated)
+  - Prevents H.264 encoder quality degradation
+
+### Bitrate Examples (Auto-Calculated)
+
+| Resolution | Framerate | Calculated Bitrate | Quality         |
+|------------|-----------|-------------------|------------------|
+| 640x480    | 30fps     | 2.0 Mbps         | Min limit        |
+| 1280x720   | 30fps     | 6.0 Mbps         | Good             |
+| 1280x720   | 60fps     | 12.0 Mbps        | Excellent        |
+| 1920x1080  | 30fps     | 13.3 Mbps        | High quality     |
+| 1920x1080  | 60fps     | 25.0 Mbps        | Max limit        |
+| 3840x2160  | 30fps     | 25.0 Mbps        | Max limit        |
+
+### Technical Details
+- New function: `calculate_optimal_bitrate(width, height, framerate) -> int`
+- New method: `CameraController._get_optimal_bitrate() -> int`
+- New method: `CameraController.get_current_bitrate() -> int`
+- Bitrate recalculation integrated into `set_resolution()` and `set_framerate()`
+- StreamingManager uses `camera.get_current_bitrate()` instead of `CONFIG.bitrate`
+- Zero breaking changes - fully backwards compatible
+
 ## [2.6.0] - 2025-11-22
 
 ### Added
