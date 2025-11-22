@@ -133,32 +133,88 @@ class CameraController:
             logger.error(f"Error checking camera availability: {e}")
             return False
 
-    def _get_sensor_config(self) -> Optional[dict]:
+    def _get_optimal_sensor_mode(self, target_width: int, target_height: int) -> tuple:
         """
-        Get sensor configuration based on current FOV mode.
+        Auto-select optimal sensor mode for IMX708 based on target resolution.
+
+        The IMX708 sensor has 3 native modes with different framerate capabilities:
+        - Mode 0: 4608x2592 @ 14.35 fps max (full sensor readout)
+        - Mode 1: 2304x1296 @ 56.03 fps max (2x2 binning, full sensor)
+        - Mode 2: 1536x864  @ 120.13 fps max (crop + 2x2 binning)
+
+        This method intelligently selects the fastest sensor mode that can accommodate
+        the target resolution, maximizing framerate performance.
+
+        Args:
+            target_width: Target output width in pixels
+            target_height: Target output height in pixels
 
         Returns:
-            dict: Sensor config for create_video_configuration(), or None for crop mode
+            tuple: (width, height) of optimal sensor output_size
+
+        References:
+            - https://forums.raspberrypi.com/viewtopic.php?t=347335
+            - https://docs.arducam.com/Raspberry-Pi-Camera/Native-camera/12MP-IMX708/
+        """
+        # For 720p and below: use fast mode (1536x864 @ 120fps)
+        # This enables high framerate video (60-120fps) for HD and lower resolutions
+        if target_width <= 1536 and target_height <= 864:
+            logger.debug(
+                f"Selected sensor mode 2 (1536x864 @ 120fps) for {target_width}x{target_height}"
+            )
+            return (1536, 864)
+
+        # For 1080p/1440p: use medium mode (2304x1296 @ 56fps)
+        # Provides good framerate for Full HD and 2K resolutions
+        elif target_width <= 2304 and target_height <= 1296:
+            logger.debug(
+                f"Selected sensor mode 1 (2304x1296 @ 56fps) for {target_width}x{target_height}"
+            )
+            return (2304, 1296)
+
+        # For 4K: use full sensor (4608x2592 @ 14fps)
+        # Maximum resolution mode, limited to 14fps due to sensor bandwidth
+        else:
+            logger.debug(
+                f"Selected sensor mode 0 (4608x2592 @ 14fps) for {target_width}x{target_height}"
+            )
+            return (4608, 2592)
+
+    def _get_sensor_config(self) -> Optional[dict]:
+        """
+        Get sensor configuration with intelligent mode selection for optimal performance.
+
+        Returns:
+            dict: Sensor config for create_video_configuration() with optimal sensor mode
 
         Notes:
-            - "scale" mode: Read full sensor area (4608x2592), downscale to output
-              → Constant field of view at all resolutions
-              → Better image quality (downsampling vs cropping)
-              → Slightly higher processing load
+            This method automatically selects the best IMX708 sensor mode based on
+            the current resolution to maximize framerate performance:
+            - Resolutions ≤ 1536x864: Use mode 2 (120fps capable)
+            - Resolutions ≤ 2304x1296: Use mode 1 (56fps capable)
+            - Resolutions > 2304x1296: Use mode 0 (14fps capable)
 
-            - "crop" mode: Read only the required sensor area
-              → Digital zoom effect (FOV reduces at lower resolutions)
-              → Lower processing load
-              → Useful for telephoto/zoom applications
+            The FOV mode setting is preserved for backwards compatibility but
+            the intelligent sensor mode selection takes precedence for performance.
         """
-        if self._fov_mode == "scale" and self._picam2 is not None:
-            sensor_resolution = self._picam2.sensor_resolution
-            return {
-                "output_size": sensor_resolution,  # Read full sensor area
-                "bit_depth": 10,  # IMX708 native bit depth
-            }
-        # crop mode: return None to let libcamera choose sensor crop
-        return None
+        if self._picam2 is None:
+            return None
+
+        # LEGACY: If FOV mode is explicitly set to "crop", return None
+        # This maintains backwards compatibility with the old FOV mode API
+        if self._fov_mode == "crop":
+            logger.debug("FOV mode is 'crop', using libcamera auto-selection")
+            return None
+
+        # INTELLIGENT MODE: Auto-select optimal sensor mode based on resolution
+        optimal_mode = self._get_optimal_sensor_mode(
+            self._current_width, self._current_height
+        )
+
+        return {
+            "output_size": optimal_mode,  # Optimal sensor mode for performance
+            "bit_depth": 10,  # IMX708 native bit depth
+        }
 
     def _detect_tuning_file(self) -> Optional[str]:
         """
