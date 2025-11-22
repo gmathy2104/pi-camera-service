@@ -5,6 +5,26 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2025-11-22
+
+### Fixed
+
+#### Critical Race Condition in Camera Reconfiguration
+- **CRITICAL BUG FIX**: Added global lock to prevent race conditions in concurrent camera reconfiguration
+  - **Problem**: Multiple simultaneous requests to change resolution or framerate could cause:
+    - Service crashes with "Failed to set framerate" errors
+    - Internal server errors and deadlocks
+    - Streaming interruptions and inconsistent camera state
+  - **Root cause**: While `StreamingManager` and `CameraController` had internal locks, there was no global lock protecting the complete stop→reconfigure→start sequence at the API level
+  - **Solution**: Added `_reconfiguration_lock` (RLock) in `api.py` to serialize all reconfiguration operations
+  - **Impact**: Concurrent requests to `/v1/camera/resolution` and `/v1/camera/framerate` now execute sequentially and safely
+  - **Testing**: Verified with multiple concurrent requests - all now succeed without errors or crashes
+
+This was an intermittent, timing-dependent bug that could occur when:
+- UI sends multiple rapid configuration changes
+- Automation scripts make concurrent API calls
+- Multiple clients access the API simultaneously
+
 ## [2.3.0] - 2025-11-22
 
 ### Added

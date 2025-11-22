@@ -62,7 +62,7 @@ class TestAPIIntegration:
         assert data["status"] == "healthy"
         assert "camera_configured" in data
         assert "streaming_active" in data
-        assert data["version"] == "2.3.0"
+        assert data["version"] == "2.3.1"
 
         print("✓ Health endpoint working")
 

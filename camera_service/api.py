@@ -168,7 +168,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="2.3.0",
+    version="2.3.1",
     lifespan=lifespan,
 )
 
@@ -478,7 +478,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="2.3.0",
+        version="2.3.1",
     )
 
 

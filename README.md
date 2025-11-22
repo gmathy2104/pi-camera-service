@@ -2,9 +2,9 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.3** - Dynamic framerate control with intelligent clamping and comprehensive camera capabilities!
+**Version 2.3.1** - Critical race condition fix + Dynamic framerate control with intelligent clamping!
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.3.1-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
@@ -381,7 +381,7 @@ sudo journalctl -u pi-camera-service -f
   "status": "healthy",
   "camera_configured": true,
   "streaming_active": true,
-  "version": "2.3.0"
+  "version": "2.3.1"
 }
 ```
 
