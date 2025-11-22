@@ -5,6 +5,107 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2025-11-23
+
+### Added
+
+#### Wide-Angle Camera Detection and Intelligent Sensor Mode Selection
+- **NEW FEATURE**: Automatic wide-angle camera detection (Camera Module 3 Wide - 120° FOV)
+  - **Problem Solved**: Wide-angle cameras were using cropped sensor modes (Mode 2), losing the wide 120° field of view advantage
+  - **Solution**: Auto-detect wide vs standard cameras and intelligently select sensor mode to preserve FOV
+  - **Impact**: Wide cameras now preserve full 120° FOV at all resolutions up to 1080p
+
+#### Camera Type-Aware Sensor Mode Selection
+The system now adapts sensor mode selection based on camera type:
+
+**For Wide-Angle Cameras (120° FOV)**:
+- **Always use full sensor** (Mode 0 or Mode 1) to preserve wide field of view
+- Mode 2 (cropped) would lose the wide-angle advantage
+- Recommended resolutions:
+  - 720p-1080p: Mode 1 (2304x1296 @ 56fps) - Full sensor with binning
+  - 4K: Mode 0 (4608x2592 @ 14fps) - Full sensor, no binning
+  - All preserve full 120° FOV
+
+**For Standard Cameras (66° FOV)**:
+- Can use Mode 2 (cropped) for higher framerates at lower resolutions
+- Mode 2 acceptable since cropping doesn't lose wide-angle advantage
+- Optimized for framerate vs resolution tradeoffs
+
+#### New API Fields - Camera Type Information
+
+**Enhanced `GET /v1/camera/status` Response**:
+- `is_wide_camera`: Boolean flag indicating wide-angle camera (120° FOV)
+- `sensor_mode_width`: Sensor mode width being used (e.g., 2304 for Mode 1)
+- `sensor_mode_height`: Sensor mode height being used (e.g., 1296 for Mode 1)
+
+**Enhanced `GET /v1/camera/capabilities` Response**:
+- `is_wide_camera`: Camera type detection result
+- `field_of_view_degrees`: Field of view in degrees (120° for wide, 66° for standard)
+- `sensor_modes`: Complete specifications for all 3 IMX708 sensor modes
+  - Mode 0: 4608x2592 @ 14.35fps (full sensor, no binning)
+  - Mode 1: 2304x1296 @ 56.03fps (full sensor with 2x2 binning)
+  - Mode 2: 1536x864 @ 120.13fps (cropped sensor with 2x2 binning)
+- `recommended_resolutions`: Array of recommended resolutions for this camera type
+  - Includes resolution, label, max FPS, sensor mode, and FOV preservation info
+  - Different recommendations for wide vs standard cameras
+
+#### Wide-Angle Camera Detection Logic
+- Detects Camera Module 3 Wide via model name: `imx708_wide_noir`, `imx708_wide`
+- Logs camera type at startup for visibility
+- Graceful fallback to standard camera if detection fails
+
+### Changed
+- Updated `CameraController._get_optimal_sensor_mode()` to consider camera type
+- Wide cameras now default to Mode 1 for all resolutions ≤ 1080p (preserves 120° FOV)
+- Standard cameras continue to use Mode 2 for ≤ 720p (optimizes framerate)
+- Enhanced logging to show FOV preservation rationale in sensor mode selection
+
+### Fixed
+- **CRITICAL FIX**: Wide-angle cameras no longer lose field of view at lower resolutions
+  - Root cause: Mode 2 crops the sensor, eliminating the wide-angle advantage
+  - Impact: Users with Camera Module 3 Wide now get full 120° FOV at 720p and 1080p
+  - Verified: `sensor_mode_width/height` shows 2304x1296 (Mode 1) instead of 1536x864 (Mode 2)
+
+### Technical Details
+- New method: `CameraController._detect_wide_camera() -> bool`
+- New method: `CameraController._get_recommended_resolutions() -> list`
+- Updated method: `_get_optimal_sensor_mode()` now accepts camera type parameter
+- New instance variable: `self._is_wide_camera`
+- API models updated: `CameraStatusResponse`, `CameraCapabilitiesResponse`
+- Zero breaking changes - fully backwards compatible
+
+### Use Cases
+- **Surveillance with wide FOV**: Preserve 120° coverage at all resolutions
+- **Dynamic preset selection**: Client can query recommended resolutions for camera type
+- **Intelligent client UIs**: Display appropriate resolution options based on camera capabilities
+- **FOV-aware applications**: Adjust counting lines, detection zones based on actual FOV
+
+### Client Integration Example
+
+```javascript
+// Query camera capabilities
+const capabilities = await fetch('/v1/camera/capabilities').then(r => r.json());
+
+if (capabilities.is_wide_camera) {
+  console.log(`Wide-angle camera detected: ${capabilities.field_of_view_degrees}° FOV`);
+
+  // Use recommended resolutions that preserve full FOV
+  const presets = capabilities.recommended_resolutions.map(res => ({
+    label: res.label,
+    width: res.width,
+    height: res.height,
+    maxFps: res.max_fps,
+    fov: res.fov
+  }));
+}
+```
+
+### Upgrade Notes
+- Existing deployments with Camera Module 3 Wide will automatically benefit from FOV preservation
+- No configuration changes required - detection is automatic
+- Check `/v1/camera/capabilities` to verify camera type detection
+- Recommended to update client UIs to use `recommended_resolutions` endpoint for dynamic presets
+
 ## [2.6.1] - 2025-11-22
 
 ### Added

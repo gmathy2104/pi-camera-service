@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.6.1** - Intelligent bitrate auto-selection prevents encoding errors!
+**Version 2.7.0** - Wide-angle camera support preserves 120° field of view!
 
-[![Version](https://img.shields.io/badge/version-2.6.1-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🔥 **New in v2.6.1**: **Intelligent Bitrate Auto-Selection** - Automatic bitrate calculation prevents corrupted macroblock errors. Bitrate now adapts to resolution×framerate (12 Mbps @ 720p/60fps, 25 Mbps @ 1080p/60fps). Visible in status endpoint!
+> 🔥 **New in v2.7.0**: **Wide-Angle Camera Detection** - Automatic detection of Camera Module 3 Wide (120° FOV). Intelligent sensor mode selection preserves full wide-angle field of view at all resolutions. New API fields expose camera type, sensor modes, and recommended resolutions!
+>
+> 🔥 **v2.6.1**: **Intelligent Bitrate Auto-Selection** - Automatic bitrate calculation prevents corrupted macroblock errors. Bitrate now adapts to resolution×framerate (12 Mbps @ 720p/60fps, 25 Mbps @ 1080p/60fps). Visible in status endpoint!
 >
 > ⚡ **v2.6 features**: **Intelligent Sensor Mode Auto-Selection** - Camera Module 3 (IMX708) automatically selects optimal native sensor mode. 720p achieves 60fps (was 14fps) - 4.2x faster!
 >
@@ -215,6 +217,43 @@ This service runs **on the Raspberry Pi**, controls the camera (e.g., Raspberry 
   - `current_framerate`: Currently configured framerate
   - `max_framerate_for_current_resolution`: Maximum fps for active resolution
   - `framerate_limits_by_resolution`: Complete table of max fps for each resolution
+
+### Advanced Features (v2.7) 🆕
+
+#### 📐 Wide-Angle Camera Detection & FOV Preservation
+- **Automatic camera type detection**: Detects Camera Module 3 Wide (120° FOV) vs standard cameras (66° FOV)
+  - Detection via camera model name (e.g., `imx708_wide_noir`)
+  - Graceful fallback to standard camera if detection fails
+- **Intelligent sensor mode selection**: Preserves wide-angle field of view
+  - **Wide cameras**: Always use full sensor (Mode 0 or Mode 1) to maintain 120° FOV
+  - **Standard cameras**: Can use cropped modes (Mode 2) for higher framerates
+  - **Critical fix**: Wide cameras no longer lose FOV at lower resolutions
+- **New API fields in `GET /v1/camera/status`**:
+  - `is_wide_camera`: Boolean flag for camera type (true = 120° FOV)
+  - `sensor_mode_width`: Current sensor mode width being used
+  - `sensor_mode_height`: Current sensor mode height being used
+- **New API fields in `GET /v1/camera/capabilities`**:
+  - `is_wide_camera`: Camera type detection result
+  - `field_of_view_degrees`: Field of view (120° or 66°)
+  - `sensor_modes`: Complete IMX708 sensor mode specifications
+  - `recommended_resolutions`: Resolution presets optimized for camera type
+    - Wide cameras: Prioritize full FOV preservation
+    - Standard cameras: Prioritize framerate optimization
+- **Perfect for**: Surveillance with wide coverage, dynamic client UIs, FOV-aware applications
+
+**Example - Query camera type and get recommendations**:
+```javascript
+const capabilities = await fetch('/v1/camera/capabilities').then(r => r.json());
+
+if (capabilities.is_wide_camera) {
+  console.log(`Wide-angle camera: ${capabilities.field_of_view_degrees}° FOV`);
+
+  // Use recommended resolutions that preserve full 120° FOV
+  capabilities.recommended_resolutions.forEach(res => {
+    console.log(`${res.label}: ${res.width}x${res.height} @ ${res.max_fps}fps (${res.fov})`);
+  });
+}
+```
 
 ### Advanced Features (v2.5) 🆕
 
@@ -472,7 +511,7 @@ sudo journalctl -u pi-camera-service -f
 }
 ```
 
-### Camera Status (Enhanced in v2.0)
+### Camera Status (Enhanced in v2.0, v2.2, v2.7)
 
 **GET** `/v1/camera/status`
 ```json
@@ -504,11 +543,16 @@ sudo journalctl -u pi-camera-service -f
       "min": 100,
       "max": 1000000
     }
-  }
+  },
+
+  // New v2.7 fields (wide-angle camera support)
+  "is_wide_camera": true,
+  "sensor_mode_width": 2304,
+  "sensor_mode_height": 1296
 }
 ```
 
-### Camera Capabilities (New in v2.2, Enhanced in v2.3)
+### Camera Capabilities (New in v2.2, Enhanced in v2.3, v2.7)
 
 **GET** `/v1/camera/capabilities`
 
@@ -550,6 +594,21 @@ Discover camera hardware capabilities and supported features.
     {"width": 1920, "height": 1080, "label": "1080p", "max_fps": 50.0},
     {"width": 1280, "height": 720, "label": "720p", "max_fps": 120.0},
     {"width": 640, "height": 480, "label": "VGA", "max_fps": 120.0}
+  ],
+
+  // New v2.7 fields (wide-angle camera support)
+  "is_wide_camera": true,
+  "field_of_view_degrees": 120,
+  "sensor_modes": {
+    "mode_0": {"width": 4608, "height": 2592, "max_fps": 14.35, "description": "Full sensor, no binning"},
+    "mode_1": {"width": 2304, "height": 1296, "max_fps": 56.03, "description": "Full sensor with 2x2 binning"},
+    "mode_2": {"width": 1536, "height": 864, "max_fps": 120.13, "description": "Cropped sensor with 2x2 binning"}
+  },
+  "recommended_resolutions": [
+    {"width": 2304, "height": 1296, "label": "Native Mode 1", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+    {"width": 1920, "height": 1080, "label": "1080p (Full FOV)", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+    {"width": 1280, "height": 720, "label": "720p (Full FOV)", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+    {"width": 4608, "height": 2592, "label": "4K (Full sensor)", "max_fps": 14, "sensor_mode": "mode_0", "fov": "Full 120°"}
   ]
 }
 ```

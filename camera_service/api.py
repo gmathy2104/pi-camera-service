@@ -257,6 +257,11 @@ class CameraStatusResponse(BaseModel):
     bitrate_bps: int | None = Field(None, description="Current bitrate in bits per second")
     bitrate_mbps: float | None = Field(None, description="Current bitrate in megabits per second")
 
+    # Camera type and sensor mode (v2.7.0)
+    is_wide_camera: bool | None = Field(None, description="True if wide-angle camera (120° FOV)")
+    sensor_mode_width: int | None = Field(None, description="Sensor mode width being used")
+    sensor_mode_height: int | None = Field(None, description="Sensor mode height being used")
+
     # Current limits (v2.2)
     current_limits: dict | None = Field(None, description="Currently applied exposure/frame duration limits")
 
@@ -278,6 +283,11 @@ class CameraCapabilitiesResponse(BaseModel):
     current_framerate: float = Field(..., description="Current configured framerate")
     framerate_limits_by_resolution: list[dict] = Field(..., description="Maximum framerate for each resolution")
     max_framerate_for_current_resolution: float = Field(..., description="Maximum framerate for current resolution")
+    # Wide-angle camera info (v2.7.0)
+    is_wide_camera: bool | None = Field(None, description="True if wide-angle camera (120° FOV)")
+    field_of_view_degrees: int | None = Field(None, description="Field of view in degrees (120° or 66°)")
+    sensor_modes: dict | None = Field(None, description="Available sensor modes with specifications")
+    recommended_resolutions: list[dict] | None = Field(None, description="Recommended resolutions for this camera type")
 
 
 class AutoExposureResponse(StatusResponse):
@@ -587,6 +597,11 @@ def get_camera_status(
             # Bitrate configuration (v2.6.1)
             bitrate_bps=status_data.get("bitrate_bps"),
             bitrate_mbps=status_data.get("bitrate_mbps"),
+
+            # Camera type and sensor mode (v2.7.0)
+            is_wide_camera=status_data.get("is_wide_camera"),
+            sensor_mode_width=status_data.get("sensor_mode_width"),
+            sensor_mode_height=status_data.get("sensor_mode_height"),
 
             # Current limits (v2.2)
             current_limits=status_data.get("current_limits"),

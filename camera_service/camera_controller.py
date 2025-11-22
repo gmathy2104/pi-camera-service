@@ -173,8 +173,11 @@ class CameraController:
         # Field of view mode: "scale" (constant FOV) or "crop" (digital zoom)
         self._fov_mode = "scale"  # Default to scale for consistent FOV
 
-        logger.info("=== CameraController v2.0 initialized with autofocus support ===" )
-        logger.debug(f"Initialized with: autofocus_mode={self._autofocus_mode}, hdr_mode={self._hdr_mode}")
+        # Detect wide-angle camera for optimal sensor mode selection (v2.7.0)
+        self._is_wide_camera = self._detect_wide_camera()
+
+        logger.info("=== CameraController v2.7.0 initialized with wide-angle support ===" )
+        logger.debug(f"Initialized with: autofocus_mode={self._autofocus_mode}, hdr_mode={self._hdr_mode}, is_wide={self._is_wide_camera}")
 
     def _check_camera_available(self) -> bool:
         """
@@ -190,17 +193,56 @@ class CameraController:
             logger.error(f"Error checking camera availability: {e}")
             return False
 
+    def _detect_wide_camera(self) -> bool:
+        """
+        Detect if the camera is a wide-angle model (120° FOV).
+
+        Wide-angle cameras (e.g., IMX708 Wide, IMX477 Wide) need full sensor
+        readout to preserve the wide field of view. Cropped sensor modes would
+        lose the wide-angle advantage.
+
+        Returns:
+            bool: True if wide-angle camera detected, False otherwise
+        """
+        try:
+            cameras = Picamera2.global_camera_info()
+            if not cameras:
+                return False
+
+            # Get first camera model info
+            camera_info = cameras[0]
+            model = camera_info.get("Model", "").lower()
+
+            # Check for wide-angle indicators in model name
+            is_wide = "wide" in model or "imx708_wide" in model
+
+            if is_wide:
+                logger.info(f"Wide-angle camera detected: {camera_info.get('Model', 'Unknown')}")
+                logger.info("Sensor mode selection optimized for 120° FOV preservation")
+            else:
+                logger.info(f"Standard camera detected: {camera_info.get('Model', 'Unknown')}")
+
+            return is_wide
+
+        except Exception as e:
+            logger.warning(f"Could not detect camera type: {e}. Assuming standard camera.")
+            return False
+
     def _get_optimal_sensor_mode(self, target_width: int, target_height: int) -> tuple:
         """
-        Auto-select optimal sensor mode for IMX708 based on target resolution.
+        Auto-select optimal sensor mode for IMX708 based on target resolution and camera type.
 
         The IMX708 sensor has 3 native modes with different framerate capabilities:
         - Mode 0: 4608x2592 @ 14.35 fps max (full sensor readout)
         - Mode 1: 2304x1296 @ 56.03 fps max (2x2 binning, full sensor)
         - Mode 2: 1536x864  @ 120.13 fps max (crop + 2x2 binning)
 
-        This method intelligently selects the fastest sensor mode that can accommodate
-        the target resolution, maximizing framerate performance.
+        For WIDE-ANGLE cameras (120° FOV):
+          Mode 2 crops the sensor and LOSES the wide-angle view! Always use Mode 0 or Mode 1
+          to preserve the full 120° field of view.
+
+        For STANDARD cameras (66° FOV):
+          Mode 2 is acceptable and provides higher framerates for lower resolutions.
 
         Args:
             target_width: Target output width in pixels
@@ -213,29 +255,44 @@ class CameraController:
             - https://forums.raspberrypi.com/viewtopic.php?t=347335
             - https://docs.arducam.com/Raspberry-Pi-Camera/Native-camera/12MP-IMX708/
         """
-        # For 720p and below: use fast mode (1536x864 @ 120fps)
-        # This enables high framerate video (60-120fps) for HD and lower resolutions
-        if target_width <= 1536 and target_height <= 864:
-            logger.debug(
-                f"Selected sensor mode 2 (1536x864 @ 120fps) for {target_width}x{target_height}"
-            )
-            return (1536, 864)
+        # WIDE-ANGLE CAMERA: Always use full sensor to preserve 120° FOV
+        if self._is_wide_camera:
+            # For all resolutions up to 2304x1296: use Mode 1 (full sensor with binning)
+            if target_width <= 2304 and target_height <= 1296:
+                logger.debug(
+                    f"[Wide Camera] Selected sensor mode 1 (2304x1296 @ 56fps) for {target_width}x{target_height} "
+                    f"to preserve 120° FOV"
+                )
+                return (2304, 1296)
+            # For 4K: use Mode 0 (full sensor, no binning)
+            else:
+                logger.debug(
+                    f"[Wide Camera] Selected sensor mode 0 (4608x2592 @ 14fps) for {target_width}x{target_height}"
+                )
+                return (4608, 2592)
 
-        # For 1080p/1440p: use medium mode (2304x1296 @ 56fps)
-        # Provides good framerate for Full HD and 2K resolutions
-        elif target_width <= 2304 and target_height <= 1296:
-            logger.debug(
-                f"Selected sensor mode 1 (2304x1296 @ 56fps) for {target_width}x{target_height}"
-            )
-            return (2304, 1296)
-
-        # For 4K: use full sensor (4608x2592 @ 14fps)
-        # Maximum resolution mode, limited to 14fps due to sensor bandwidth
+        # STANDARD CAMERA: Optimize for framerate
         else:
-            logger.debug(
-                f"Selected sensor mode 0 (4608x2592 @ 14fps) for {target_width}x{target_height}"
-            )
-            return (4608, 2592)
+            # For 720p and below: use fast mode (1536x864 @ 120fps)
+            if target_width <= 1536 and target_height <= 864:
+                logger.debug(
+                    f"[Standard Camera] Selected sensor mode 2 (1536x864 @ 120fps) for {target_width}x{target_height}"
+                )
+                return (1536, 864)
+
+            # For 1080p/1440p: use medium mode (2304x1296 @ 56fps)
+            elif target_width <= 2304 and target_height <= 1296:
+                logger.debug(
+                    f"[Standard Camera] Selected sensor mode 1 (2304x1296 @ 56fps) for {target_width}x{target_height}"
+                )
+                return (2304, 1296)
+
+            # For 4K: use full sensor (4608x2592 @ 14fps)
+            else:
+                logger.debug(
+                    f"[Standard Camera] Selected sensor mode 0 (4608x2592 @ 14fps) for {target_width}x{target_height}"
+                )
+                return (4608, 2592)
 
     def _get_sensor_config(self) -> Optional[dict]:
         """
@@ -612,6 +669,11 @@ class CameraController:
                         "max": MAX_EXPOSURE_US,
                     }
 
+                # Get current sensor mode being used (v2.7.0)
+                sensor_mode_size = self._get_optimal_sensor_mode(
+                    self._current_width, self._current_height
+                )
+
                 status = {
                     # Existing metadata
                     "lux": meta.get("Lux"),
@@ -636,6 +698,11 @@ class CameraController:
                     # Bitrate configuration (v2.6.1)
                     "bitrate_bps": self._current_bitrate,
                     "bitrate_mbps": round(self._current_bitrate / 1_000_000, 2),
+
+                    # Camera type and sensor mode (v2.7.0)
+                    "is_wide_camera": self._is_wide_camera,
+                    "sensor_mode_width": sensor_mode_size[0],
+                    "sensor_mode_height": sensor_mode_size[1],
 
                     # Current limits (v2.2)
                     "current_limits": current_limits,
@@ -769,10 +836,47 @@ class CameraController:
                 "max_framerate_for_current_resolution": calculate_max_framerate(
                     self._current_width, self._current_height
                 ),
+                # Wide-angle camera info (v2.7.0)
+                "is_wide_camera": self._is_wide_camera,
+                "field_of_view_degrees": 120 if self._is_wide_camera else 66,
+                "sensor_modes": {
+                    "mode_0": {"width": 4608, "height": 2592, "max_fps": 14.35, "description": "Full sensor, no binning"},
+                    "mode_1": {"width": 2304, "height": 1296, "max_fps": 56.03, "description": "Full sensor with 2x2 binning"},
+                    "mode_2": {"width": 1536, "height": 864, "max_fps": 120.13, "description": "Cropped sensor with 2x2 binning"}
+                },
+                "recommended_resolutions": self._get_recommended_resolutions(),
             }
 
-            logger.debug(f"Camera capabilities retrieved: {len(features)} features supported")
+            logger.debug(f"Camera capabilities retrieved: {len(features)} features supported, is_wide={self._is_wide_camera}")
             return capabilities
+
+    def _get_recommended_resolutions(self) -> list:
+        """
+        Get recommended resolutions based on camera type (wide vs standard).
+
+        For wide-angle cameras, we recommend resolutions that use Mode 1 (full sensor)
+        to preserve the 120° field of view. For standard cameras, Mode 2 (cropped) is acceptable.
+
+        Returns:
+            list: List of recommended resolution configurations
+        """
+        if self._is_wide_camera:
+            # Wide camera: Recommend resolutions that preserve full FOV
+            return [
+                {"width": 2304, "height": 1296, "label": "Native Mode 1", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+                {"width": 1920, "height": 1080, "label": "1080p (Full FOV)", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+                {"width": 1280, "height": 720, "label": "720p (Full FOV)", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Full 120°"},
+                {"width": 4608, "height": 2592, "label": "4K (Full sensor)", "max_fps": 14, "sensor_mode": "mode_0", "fov": "Full 120°"},
+            ]
+        else:
+            # Standard camera: Can use cropped modes for higher FPS
+            return [
+                {"width": 1536, "height": 864, "label": "Native Mode 2", "max_fps": 120, "sensor_mode": "mode_2", "fov": "Standard"},
+                {"width": 1280, "height": 720, "label": "720p (High FPS)", "max_fps": 120, "sensor_mode": "mode_2", "fov": "Standard"},
+                {"width": 2304, "height": 1296, "label": "Native Mode 1", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Standard"},
+                {"width": 1920, "height": 1080, "label": "1080p", "max_fps": 56, "sensor_mode": "mode_1", "fov": "Standard"},
+                {"width": 4608, "height": 2592, "label": "4K", "max_fps": 14, "sensor_mode": "mode_0", "fov": "Standard"},
+            ]
 
     # ---------- Autofocus Controls ----------
 
