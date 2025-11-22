@@ -163,7 +163,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="2.1.0",
+    version="2.3.0",
     lifespan=lifespan,
 )
 
@@ -222,6 +222,28 @@ class CameraStatusResponse(BaseModel):
     day_night_threshold_lux: float | None = Field(None, description="Lux threshold for day/night")
     frame_duration_us: int | None = Field(None, description="Frame duration in microseconds")
     sensor_black_levels: list[int] | None = Field(None, description="Sensor black levels")
+
+    # Current limits (v2.2)
+    current_limits: dict | None = Field(None, description="Currently applied exposure/frame duration limits")
+
+
+class CameraCapabilitiesResponse(BaseModel):
+    """Camera capabilities response model with hardware limits and features."""
+    sensor_model: str = Field(..., description="Camera sensor model name")
+    sensor_resolution: dict = Field(..., description="Native sensor resolution")
+    supported_resolutions: list[dict] = Field(..., description="List of supported resolutions")
+    exposure_limits_us: dict = Field(..., description="Hardware exposure time limits (microseconds)")
+    gain_limits: dict = Field(..., description="Hardware gain limits")
+    lens_position_limits: dict = Field(..., description="Lens position limits (for autofocus)")
+    exposure_value_range: dict = Field(..., description="EV compensation range")
+    supported_noise_reduction_modes: list[str] = Field(..., description="Supported noise reduction modes")
+    supported_ae_constraint_modes: list[str] = Field(..., description="Supported AE constraint modes")
+    supported_ae_exposure_modes: list[str] = Field(..., description="Supported AE exposure modes")
+    supported_awb_modes: list[str] = Field(..., description="Supported AWB modes")
+    features: list[str] = Field(..., description="List of supported features")
+    current_framerate: float = Field(..., description="Current configured framerate")
+    framerate_limits_by_resolution: list[dict] = Field(..., description="Maximum framerate for each resolution")
+    max_framerate_for_current_resolution: float = Field(..., description="Maximum framerate for current resolution")
 
 
 class AutoExposureResponse(StatusResponse):
@@ -376,6 +398,22 @@ class ResolutionRequest(BaseModel):
     restart_streaming: bool = Field(True, description="Restart streaming after resolution change")
 
 
+class FramerateRequest(BaseModel):
+    """Request model for framerate change."""
+    framerate: float = Field(..., gt=0, le=1000, description="Desired framerate in fps")
+    restart_streaming: bool = Field(True, description="Restart streaming after framerate change")
+
+
+class FramerateResponse(BaseModel):
+    """Response model for framerate change."""
+    status: str = "ok"
+    requested_framerate: float = Field(..., description="Requested framerate")
+    applied_framerate: float = Field(..., description="Actually applied framerate")
+    max_framerate_for_resolution: float = Field(..., description="Maximum framerate for current resolution")
+    resolution: str = Field(..., description="Current resolution (WxH)")
+    clamped: bool = Field(..., description="Whether the framerate was clamped to maximum")
+
+
 # ========== Exception Handlers ==========
 
 @app.exception_handler(InvalidParameterError)
@@ -435,7 +473,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="2.1.0",
+        version="2.3.0",
     )
 
 
@@ -485,6 +523,9 @@ def get_camera_status(
             day_night_threshold_lux=status_data.get("day_night_threshold_lux"),
             frame_duration_us=status_data.get("frame_duration_us"),
             sensor_black_levels=status_data.get("sensor_black_levels"),
+
+            # Current limits (v2.2)
+            current_limits=status_data.get("current_limits"),
         )
     except CameraNotAvailableError:
         raise
@@ -493,6 +534,45 @@ def get_camera_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve camera status",
+        )
+
+
+@app.get(
+    "/v1/camera/capabilities",
+    response_model=CameraCapabilitiesResponse,
+    tags=["Camera"],
+    dependencies=[Depends(verify_api_key)],
+)
+def get_camera_capabilities(
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+) -> CameraCapabilitiesResponse:
+    """
+    Get camera hardware capabilities and supported features.
+
+    Returns comprehensive information about what the camera hardware supports,
+    including resolution limits, exposure limits, gain limits, and available features.
+
+    This endpoint provides static capabilities information (what the hardware can do),
+    while /v1/camera/status provides dynamic runtime information (current state and limits).
+
+    Returns:
+        CameraCapabilitiesResponse: Camera capabilities
+
+    Raises:
+        HTTPException: If camera is not configured or operation fails
+    """
+    logger.debug("Getting camera capabilities")
+
+    try:
+        capabilities = camera.get_capabilities()
+        return CameraCapabilitiesResponse(**capabilities)
+    except CameraNotAvailableError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting camera capabilities: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve camera capabilities",
         )
 
 
@@ -1588,4 +1668,69 @@ def set_resolution(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to set resolution",
+        )
+
+
+@app.post(
+    "/v1/camera/framerate",
+    response_model=FramerateResponse,
+    tags=["Camera"],
+    dependencies=[Depends(verify_api_key)],
+)
+def set_framerate(
+    req: FramerateRequest,
+    camera: Annotated[CameraController, Depends(get_camera_controller)],
+    streaming: Annotated[StreamingManager, Depends(get_streaming_manager)],
+) -> FramerateResponse:
+    """
+    Change camera framerate with intelligent clamping.
+
+    Automatically clamps the requested framerate to the maximum supported
+    by the current resolution. For example, requesting 500fps at 4K will
+    automatically apply 30fps (the maximum for 4K).
+
+    **Framerate Limits by Resolution:**
+    - 4K (3840x2160): Max 30fps
+    - 1440p (2560x1440): Max 40fps
+    - 1080p (1920x1080): Max 50fps
+    - 720p (1280x720): Max 120fps
+
+    The stream will be briefly interrupted during the framerate change.
+
+    Args:
+        req: Framerate request with desired fps and restart flag
+
+    Returns:
+        FramerateResponse: Details about requested vs applied framerate
+
+    Raises:
+        HTTPException: If operation fails
+    """
+    logger.info(f"Setting framerate: {req.framerate}fps")
+
+    try:
+        # Check if streaming is active
+        was_streaming = streaming.is_streaming()
+
+        # Stop streaming if active (must stop encoder first)
+        if was_streaming:
+            logger.info("Stopping streaming before framerate change")
+            streaming.stop()
+
+        # Change framerate (this will stop, reconfigure, and restart camera)
+        result = camera.set_framerate(req.framerate)
+
+        # Restart streaming if requested and was previously streaming
+        if req.restart_streaming and was_streaming:
+            logger.info("Restarting streaming after framerate change")
+            streaming.start()
+
+        return FramerateResponse(**result)
+    except (CameraNotAvailableError, InvalidParameterError):
+        raise
+    except Exception as e:
+        logger.error(f"Error setting framerate: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set framerate",
         )

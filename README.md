@@ -2,15 +2,19 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.1** - Advanced exposure controls, noise reduction, dynamic resolution, and low-light optimization!
+**Version 2.3** - Dynamic framerate control with intelligent clamping and comprehensive camera capabilities!
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🆕 **New in v2.1**: Exposure value (EV) compensation, noise reduction modes, advanced AE controls (constraint/exposure modes), AWB mode presets, autofocus trigger, dynamic resolution change, and corrected exposure limits! Perfect for low-light scenarios.
+> 🆕 **New in v2.3**: Dynamic framerate control with intelligent clamping! Request any framerate and the API automatically applies the maximum for your resolution. Enhanced capabilities endpoint with complete framerate limits table.
+>
+> ℹ️ **v2.2 features**: Camera capabilities discovery endpoint to query supported resolutions, exposure/gain limits, and available features.
+>
+> ℹ️ **v2.1 features**: Exposure value (EV) compensation, noise reduction modes, advanced AE controls, AWB mode presets, autofocus trigger, dynamic resolution change.
 >
 > ℹ️ **v2.0 features**: Autofocus control, snapshot capture, manual AWB with NoIR presets, image processing, HDR support, ROI/digital zoom, day/night detection. See [docs/upgrade-v2.md](docs/upgrade-v2.md).
 
@@ -165,6 +169,44 @@ This service runs **on the Raspberry Pi**, controls the camera (e.g., Raspberry 
   - `./scripts/set-low-light-motion-mode.sh` - Reduced blur (motion)
   - `./scripts/set-normal-mode.sh` - Reset to defaults
 - **Documentation**: See [docs/low-light-modes.md](docs/low-light-modes.md)
+
+### Advanced Features (v2.2) 🆕
+
+#### 📊 Camera Capabilities Discovery
+- **Hardware discovery**: Query camera sensor model, resolution, and supported features
+- **Exposure/gain limits**: Get minimum and maximum values for exposure and gain
+- **Feature detection**: Discover what controls are available (autofocus, HDR, etc.)
+- **Resolution support**: List all supported streaming resolutions
+- **Essential for clients**: Know what the camera supports before configuring
+- **Endpoint**: `GET /v1/camera/capabilities`
+
+#### 📈 Enhanced Status Information
+- **Current limits**: See active frame duration and exposure constraints
+- **Effective limits**: Understand why certain exposure values may not apply
+- **Real-time constraints**: Monitor hardware and configured limits
+- **Enhanced field**: `current_limits` in `GET /v1/camera/status`
+
+### Advanced Features (v2.3) 🆕
+
+#### 🎬 Dynamic Framerate Control with Intelligent Clamping
+- **Independent framerate adjustment**: Change framerate without changing resolution
+- **Smart limit enforcement**: Automatically clamps to hardware maximum for current resolution
+- **User-friendly**: No rejected requests - API applies best available framerate
+- **Detailed feedback**: Returns requested vs applied framerate with clamping indicator
+- **Resolution-aware limits**:
+  - 4K (3840x2160): max 30 fps
+  - 1440p (2560x1440): max 40 fps
+  - 1080p (1920x1080): max 50 fps
+  - 720p (1280x720): max 120 fps
+  - VGA (640x480): max 120 fps
+- **Example**: Request 500fps at 4K → API applies 30fps (the maximum) and indicates clamping occurred
+- **Endpoint**: `POST /v1/camera/framerate`
+
+#### 📊 Complete Framerate Limits Table
+- **Enhanced capabilities**: `GET /v1/camera/capabilities` now includes:
+  - `current_framerate`: Currently configured framerate
+  - `max_framerate_for_current_resolution`: Maximum fps for active resolution
+  - `framerate_limits_by_resolution`: Complete table of max fps for each resolution
 
 The video stream is published to MediaMTX, which then serves it via **RTSP / WebRTC / HLS**.
 
@@ -339,7 +381,7 @@ sudo journalctl -u pi-camera-service -f
   "status": "healthy",
   "camera_configured": true,
   "streaming_active": true,
-  "version": "2.0.0"
+  "version": "2.3.0"
 }
 ```
 
@@ -365,7 +407,63 @@ sudo journalctl -u pi-camera-service -f
   "day_night_mode": "auto",
   "day_night_threshold_lux": 10.0,
   "frame_duration_us": 33321,
-  "sensor_black_levels": [4096, 4096, 4096, 4096]
+  "sensor_black_levels": [4096, 4096, 4096, 4096],
+
+  // New v2.2 field
+  "current_limits": {
+    "frame_duration_us": 33321,
+    "frame_duration_limits_us": null,
+    "effective_exposure_limit_us": {
+      "min": 100,
+      "max": 1000000
+    }
+  }
+}
+```
+
+### Camera Capabilities (New in v2.2, Enhanced in v2.3)
+
+**GET** `/v1/camera/capabilities`
+
+Discover camera hardware capabilities and supported features.
+
+```json
+{
+  "sensor_model": "imx708",
+  "sensor_resolution": {
+    "width": 4608,
+    "height": 2592
+  },
+  "supported_resolutions": [
+    {"width": 640, "height": 480, "label": "VGA"},
+    {"width": 1280, "height": 720, "label": "720p"},
+    {"width": 1920, "height": 1080, "label": "1080p"},
+    {"width": 2560, "height": 1440, "label": "1440p"},
+    {"width": 3840, "height": 2160, "label": "4K"}
+  ],
+  "exposure_limits_us": {"min": 100, "max": 1000000},
+  "gain_limits": {"min": 1.0, "max": 16.0},
+  "lens_position_limits": {"min": 0.0, "max": 15.0},
+  "exposure_value_range": {"min": -8.0, "max": 8.0},
+  "supported_noise_reduction_modes": ["off", "fast", "high_quality", "minimal", "zsl"],
+  "supported_ae_constraint_modes": ["normal", "highlight", "shadows", "custom"],
+  "supported_ae_exposure_modes": ["normal", "short", "long", "custom"],
+  "supported_awb_modes": ["auto", "tungsten", "fluorescent", "indoor", "daylight", "cloudy", "custom"],
+  "features": [
+    "auto_exposure", "manual_exposure", "auto_white_balance", "manual_white_balance",
+    "exposure_value_compensation", "noise_reduction", "ae_constraint_modes",
+    "ae_exposure_modes", "awb_modes", "image_processing", "roi_digital_zoom",
+    "exposure_limits", "autofocus", "lens_position_control", "autofocus_trigger"
+  ],
+  "current_framerate": 30.0,
+  "max_framerate_for_current_resolution": 50.0,
+  "framerate_limits_by_resolution": [
+    {"width": 3840, "height": 2160, "label": "4K", "max_fps": 30.0},
+    {"width": 2560, "height": 1440, "label": "1440p", "max_fps": 40.0},
+    {"width": 1920, "height": 1080, "label": "1080p", "max_fps": 50.0},
+    {"width": 1280, "height": 720, "label": "720p", "max_fps": 120.0},
+    {"width": 640, "height": 480, "label": "VGA", "max_fps": 120.0}
+  ]
 }
 ```
 
@@ -473,6 +571,57 @@ sudo journalctl -u pi-camera-service -f
 }
 ```
 
+### Dynamic Framerate Control (v2.3)
+
+**POST** `/v1/camera/framerate`
+
+Change camera framerate dynamically with intelligent clamping. The API automatically applies the hardware maximum for your current resolution, ensuring a user-friendly experience without rejected requests.
+
+**Request**:
+```json
+{
+  "framerate": 60.0,           // Desired framerate (1-1000 fps)
+  "restart_streaming": true    // Restart streaming after change (default: true)
+}
+```
+
+**Response**:
+```json
+{
+  "status": "ok",
+  "requested_framerate": 60.0,
+  "applied_framerate": 50.0,    // Actual framerate applied (may be clamped)
+  "max_framerate_for_resolution": 50.0,
+  "resolution": "1920x1080",
+  "clamped": true               // Indicates if framerate was clamped to max
+}
+```
+
+**Example - Requesting high framerate at 4K**:
+```bash
+# Request 500fps at 4K resolution
+curl -X POST http://raspberrypi:8000/v1/camera/framerate \
+  -H "Content-Type: application/json" \
+  -d '{"framerate": 500}'
+
+# Response: API automatically clamps to 30fps (4K maximum)
+# {
+#   "status": "ok",
+#   "requested_framerate": 500.0,
+#   "applied_framerate": 30.0,
+#   "max_framerate_for_resolution": 30.0,
+#   "resolution": "3840x2160",
+#   "clamped": true
+# }
+```
+
+**Resolution-based framerate limits**:
+- 4K (3840x2160): max 30 fps
+- 1440p (2560x1440): max 40 fps
+- 1080p (1920x1080): max 50 fps
+- 720p (1280x720): max 120 fps
+- VGA (640x480): max 120 fps
+
 ### Streaming Control
 
 **POST** `/v1/streaming/start`
@@ -555,6 +704,11 @@ curl -X POST http://raspberrypi:8000/v1/camera/roi \
   -H "Content-Type: application/json" \
   -d '{"x": 0.25, "y": 0.25, "width": 0.5, "height": 0.5}'
 
+# Change framerate (v2.3) - intelligent clamping
+curl -X POST http://raspberrypi:8000/v1/camera/framerate \
+  -H "Content-Type: application/json" \
+  -d '{"framerate": 60}'
+
 # With authentication (if CAMERA_API_KEY is set)
 curl -H "X-API-Key: your-key" \
   http://raspberrypi:8000/v1/camera/status
@@ -612,6 +766,19 @@ requests.post(
     },
     headers=HEADERS
 )
+
+# Change framerate (v2.3) with intelligent clamping
+response = requests.post(
+    f"{BASE_URL}/v1/camera/framerate",
+    json={"framerate": 60},
+    headers=HEADERS
+)
+result = response.json()
+if result['clamped']:
+    print(f"Framerate clamped: {result['requested_framerate']}fps → {result['applied_framerate']}fps")
+    print(f"Max for {result['resolution']}: {result['max_framerate_for_resolution']}fps")
+else:
+    print(f"Framerate set to {result['applied_framerate']}fps")
 ```
 
 ### JavaScript / TypeScript

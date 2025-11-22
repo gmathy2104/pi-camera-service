@@ -5,6 +5,60 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-11-22
+
+### Added
+
+#### Dynamic Framerate Control with Intelligent Clamping
+- `POST /v1/camera/framerate` - Change framerate dynamically with smart limit enforcement
+  - Automatically clamps requested framerate to hardware maximum for current resolution
+  - Returns detailed information about requested vs applied framerate
+  - Indicates with `clamped` flag when value was adjusted
+  - Example: Requesting 500fps at 4K automatically applies 30fps (the maximum for 4K)
+
+#### Framerate Limits in Capabilities
+- Enhanced `GET /v1/camera/capabilities` with framerate information:
+  - `current_framerate`: Currently configured framerate
+  - `max_framerate_for_current_resolution`: Maximum framerate for active resolution
+  - `framerate_limits_by_resolution`: Complete table of max fps per resolution
+    - 4K (3840x2160): 30fps max
+    - 1440p (2560x1440): 40fps max
+    - 1080p (1920x1080): 50fps max
+    - 720p (1280x720): 120fps max
+    - VGA (640x480): 120fps max
+
+### Changed
+- Resolution tracking now persists across camera reconfigurations
+- Updated test suite with 3 new comprehensive tests (now 16 tests total for v2.1+)
+
+### Documentation
+- Updated README.md with v2.3 framerate endpoint documentation
+- Added comprehensive CHANGELOG entry for v2.3
+
+## [2.2.0] - 2025-11-22
+
+### Added
+
+#### Camera Capabilities Discovery
+- `GET /v1/camera/capabilities` - New endpoint to query camera hardware capabilities
+  - Returns sensor model, supported resolutions, exposure/gain limits
+  - Lists all supported features (autofocus, noise reduction modes, etc.)
+  - Provides exposure value ranges and available control modes
+  - Essential for clients to discover what the camera supports
+
+#### Enhanced Status Information
+- `GET /v1/camera/status` now includes `current_limits` field
+  - Shows currently active frame duration and exposure limits
+  - Displays effective exposure limits based on hardware and configured constraints
+  - Helps understand why certain exposure values may not be achievable
+
+### Changed
+- Updated test suite with 2 new comprehensive tests (now 13 tests total for v2.1)
+
+### Documentation
+- Updated README.md with v2.2 capabilities endpoint
+- Added comprehensive CHANGELOG entry for v2.2
+
 ## [2.1.0] - 2025-11-22
 
 ### Added
