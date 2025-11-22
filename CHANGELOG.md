@@ -5,6 +5,50 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-11-22
+
+### Added
+
+#### Field of View (FOV) Mode Selection
+- **NEW FEATURE**: Choose between two FOV modes for different use cases
+  - **"scale" mode** (default): Constant field of view at all resolutions
+    - Reads full sensor area (4608x2592 for IMX708)
+    - Hardware ISP downscales to target resolution
+    - Better image quality (downsampling vs cropping)
+    - Ideal for monitoring, surveillance, and consistent framing
+  - **"crop" mode**: Digital zoom effect with sensor crop
+    - Reads only required sensor area for target resolution
+    - FOV reduces at lower resolutions (telephoto effect)
+    - Lower processing load, faster sensor readout
+    - Useful for zoom/telephoto applications
+
+#### New API Endpoints
+- `GET /v1/camera/fov_mode` - Query current FOV mode
+  - Returns: `{"mode": "scale", "description": "..."}`
+- `POST /v1/camera/fov_mode` - Change FOV mode
+  - Request: `{"mode": "scale"}` or `{"mode": "crop"}`
+  - Takes effect on next resolution/framerate change
+
+#### Enhanced Resolution Endpoint
+- Added optional `fov_mode` parameter to `POST /v1/camera/resolution`
+  - Can change FOV mode and resolution in single request
+  - Example: `{"width": 1280, "height": 720, "fov_mode": "crop"}`
+
+#### Enhanced Status Response
+- Added `fov_mode` field to `GET /v1/camera/status`
+  - Shows current FOV mode ("scale" or "crop")
+
+### Changed
+- Default FOV mode is now "scale" for constant field of view across all resolutions
+- All resolution/framerate changes now maintain configurable FOV behavior
+- Camera configuration uses conditional sensor parameters based on FOV mode
+
+### Technical Details
+- New `CameraController` methods: `set_fov_mode()`, `get_fov_mode()`, `_get_sensor_config()`
+- FOV mode persists across camera reconfigurations
+- Thread-safe implementation with existing RLock protection
+- Zero breaking changes - fully backwards compatible
+
 ## [2.3.1] - 2025-11-22
 
 ### Fixed

@@ -2,13 +2,17 @@
 
 This document provides a complete reference for the Pi Camera Service HTTP API, including all available features, endpoints, and connection instructions.
 
+> **Note**: This document primarily covers v1.0 API endpoints. For comprehensive documentation of v2.0+ features (autofocus, snapshot, HDR, exposure value, noise reduction, capabilities, framerate control, FOV mode, etc.), see the main [README.md](../README.md).
+>
+> **New in v2.4**: Field of View (FOV) mode selection - documented below.
+
 ## Overview
 
 The Pi Camera Service is a REST API that controls a Raspberry Pi camera and streams H.264 video to MediaMTX via RTSP. It provides real-time control over camera settings including exposure, gain, white balance, and streaming.
 
 **Base URL:** `http://<RASPBERRY_PI_IP>:8000`
 
-**API Version:** v1.0
+**API Version:** v2.4.0 (this document covers v1.0 core features + v2.4 FOV mode)
 
 **Protocol:** HTTP/REST
 
@@ -368,6 +372,144 @@ curl -X POST http://<PI_IP>:8000/v1/camera/awb \
 **When to Use:**
 - Enable for automatic color correction
 - Disable for consistent color temperature
+
+---
+
+#### POST /v1/camera/fov_mode (v2.4)
+
+Set the Field of View (FOV) mode to control sensor readout behavior across different resolutions.
+
+**Authentication:** Required (if configured)
+
+**Request Body:**
+```json
+{
+  "mode": "scale"
+}
+```
+
+**Request Fields:**
+- `mode` (string, required): FOV mode - either `"scale"` or `"crop"`
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "mode": "scale",
+  "description": "Full sensor readout with downscaling → Constant field of view"
+}
+```
+
+**FOV Modes:**
+
+- **`scale`** (default): Constant field of view at all resolutions
+  - Reads full sensor area (4608x2592 for IMX708)
+  - Hardware ISP downscales to target resolution
+  - Better image quality from downsampling vs cropping
+  - Perfect for surveillance, monitoring, consistent framing
+  - Use when you want the same field of view regardless of resolution
+
+- **`crop`**: Digital zoom effect (sensor crop)
+  - Reads only required sensor area for target resolution
+  - FOV reduces at lower resolutions (telephoto effect)
+  - Lower processing load, faster sensor readout
+  - Useful for zoom/telephoto applications
+  - Use when you want a "zoomed in" view at lower resolutions
+
+**Example - Set to scale mode:**
+```bash
+curl -X POST http://<PI_IP>:8000/v1/camera/fov_mode \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{"mode": "scale"}'
+```
+
+**Example - Set to crop mode:**
+```bash
+curl -X POST http://<PI_IP>:8000/v1/camera/fov_mode \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{"mode": "crop"}'
+```
+
+**Python Example:**
+```python
+import requests
+
+# Set to scale mode for constant FOV
+response = requests.post(
+    "http://<PI_IP>:8000/v1/camera/fov_mode",
+    headers={"X-API-Key": "your-key"},
+    json={"mode": "scale"}
+)
+print(response.json())
+
+# Set to crop mode for digital zoom effect
+response = requests.post(
+    "http://<PI_IP>:8000/v1/camera/fov_mode",
+    headers={"X-API-Key": "your-key"},
+    json={"mode": "crop"}
+)
+print(response.json())
+```
+
+**Combined with Resolution Change:**
+
+You can also set FOV mode when changing resolution:
+
+```bash
+curl -X POST http://<PI_IP>:8000/v1/camera/resolution \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{
+    "width": 1280,
+    "height": 720,
+    "fov_mode": "crop",
+    "restart_streaming": true
+  }'
+```
+
+**When to Use:**
+- Use `scale` for surveillance cameras where consistent framing is essential
+- Use `crop` when you want different zoom levels at different resolutions
+- Change to `crop` before lowering resolution if you want a telephoto effect
+- Change to `scale` if lower resolutions appear too zoomed in
+
+**Note:** Changes take effect on the next camera reconfiguration (resolution/framerate change).
+
+---
+
+#### GET /v1/camera/fov_mode (v2.4)
+
+Query the current FOV mode.
+
+**Authentication:** Required (if configured)
+
+**Response:**
+```json
+{
+  "mode": "scale",
+  "description": "Full sensor readout with downscaling → Constant field of view"
+}
+```
+
+**Example:**
+```bash
+curl -H "X-API-Key: your-key" http://<PI_IP>:8000/v1/camera/fov_mode
+```
+
+**Python Example:**
+```python
+import requests
+
+response = requests.get(
+    "http://<PI_IP>:8000/v1/camera/fov_mode",
+    headers={"X-API-Key": "your-key"}
+)
+mode_info = response.json()
+print(f"Current FOV mode: {mode_info['mode']}")
+print(f"Description: {mode_info['description']}")
+```
 
 ---
 

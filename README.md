@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.3.1** - Critical race condition fix + Dynamic framerate control with intelligent clamping!
+**Version 2.4.0** - FOV mode selection (scale/crop) + Dynamic framerate control!
 
-[![Version](https://img.shields.io/badge/version-2.3.1-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🆕 **New in v2.3**: Dynamic framerate control with intelligent clamping! Request any framerate and the API automatically applies the maximum for your resolution. Enhanced capabilities endpoint with complete framerate limits table.
+> 🆕 **New in v2.4**: **FOV mode selection** - Choose between constant field of view (scale) or digital zoom effect (crop) for all resolutions. Perfect control for surveillance or telephoto applications!
+>
+> ℹ️ **v2.3 features**: Dynamic framerate control with intelligent clamping. Fixed critical race condition in concurrent camera reconfiguration.
 >
 > ℹ️ **v2.2 features**: Camera capabilities discovery endpoint to query supported resolutions, exposure/gain limits, and available features.
 >
@@ -381,7 +383,7 @@ sudo journalctl -u pi-camera-service -f
   "status": "healthy",
   "camera_configured": true,
   "streaming_active": true,
-  "version": "2.3.1"
+  "version": "2.4.0"
 }
 ```
 
@@ -464,6 +466,53 @@ Discover camera hardware capabilities and supported features.
     {"width": 1280, "height": 720, "label": "720p", "max_fps": 120.0},
     {"width": 640, "height": 480, "label": "VGA", "max_fps": 120.0}
   ]
+}
+```
+
+### Field of View (FOV) Mode (New in v2.4)
+
+Choose between constant field of view or digital zoom effect across all resolutions.
+
+**GET** `/v1/camera/fov_mode`
+
+Query current FOV mode.
+
+```json
+{
+  "mode": "scale",
+  "description": "Full sensor readout with downscaling → Constant field of view"
+}
+```
+
+**POST** `/v1/camera/fov_mode`
+
+Change FOV mode.
+
+```json
+{"mode": "scale"}  // or "crop"
+```
+
+**Modes:**
+- **`scale`** (default): Constant field of view at all resolutions
+  - Reads full sensor area (4608x2592 for IMX708)
+  - Hardware ISP downscales to target resolution
+  - Better image quality from downsampling
+  - Perfect for surveillance, monitoring, consistent framing
+
+- **`crop`**: Digital zoom effect (sensor crop)
+  - Reads only required sensor area for target resolution
+  - FOV reduces at lower resolutions (telephoto effect)
+  - Lower processing load, faster readout
+  - Useful for zoom/telephoto applications
+
+**Example - Set FOV mode with resolution:**
+```json
+POST /v1/camera/resolution
+{
+  "width": 1280,
+  "height": 720,
+  "fov_mode": "crop",  // Optional: change mode simultaneously
+  "restart_streaming": true
 }
 ```
 
