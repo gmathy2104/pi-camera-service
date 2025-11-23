@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.8.0** - Camera configuration transparency with advanced controls status tracking!
+**Version 2.8.1** - System logs API with real-time streaming for remote debugging!
 
-[![Version](https://img.shields.io/badge/version-2.8.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.8.1-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🔥 **New in v2.8.0**: **Advanced Controls Status Tracking** - Camera status endpoint now exposes all advanced control settings in real-time (EV compensation, noise reduction mode, AE constraint/exposure modes). Perfect for debugging and monitoring camera configuration!
+> 🔥 **New in v2.8.1**: **System Logs API** - Remote log access via `/v1/system/logs` with filtering (lines, level, search) + real-time streaming via Server-Sent Events (SSE) at `/v1/system/logs/stream`. Perfect for remote debugging and monitoring!
+>
+> 🔥 **v2.8.0**: **Advanced Controls Status Tracking** - Camera status endpoint now exposes all advanced control settings in real-time (EV compensation, noise reduction mode, AE constraint/exposure modes). Perfect for debugging and monitoring camera configuration!
 >
 > 🔥 **v2.7.0**: **Wide-Angle Camera Detection** - Automatic detection of Camera Module 3 Wide (120° FOV). Intelligent sensor mode selection preserves full wide-angle field of view at all resolutions. New API fields expose camera type, sensor modes, and recommended resolutions!
 >
@@ -335,6 +337,69 @@ Monitor your Raspberry Pi's health in real-time alongside camera operations:
 - Alert on thermal throttling or under-voltage issues
 - Track resource usage for optimization
 - Verify system stability for 24/7 deployments
+
+### Advanced Features (v2.8.1) 🆕
+
+#### 📋 System Logs API with Real-Time Streaming
+
+Remote access to service logs for debugging and monitoring without SSH access:
+
+- **Log Retrieval with Filtering**
+  - Query recent logs (1-10,000 lines, default: 100)
+  - Filter by log level (INFO, WARNING, ERROR)
+  - Search by keyword/pattern
+  - Returns JSON with log lines and metadata
+  - **Endpoint**: `GET /v1/system/logs`
+
+- **Real-Time Log Streaming (SSE)**
+  - Server-Sent Events for continuous log monitoring
+  - Same filtering capabilities as retrieval endpoint
+  - Auto-cleanup on client disconnect
+  - Perfect for live debugging dashboards
+  - **Endpoint**: `GET /v1/system/logs/stream`
+
+**Example - Get last 50 logs**:
+```bash
+curl "http://<PI_IP>:8000/v1/system/logs?lines=50"
+```
+
+**Example - Filter ERROR logs**:
+```bash
+curl "http://<PI_IP>:8000/v1/system/logs?level=ERROR&lines=100"
+```
+
+**Example - Search for specific events**:
+```bash
+curl "http://<PI_IP>:8000/v1/system/logs?search=resolution&lines=200"
+```
+
+**Example - Real-time streaming (JavaScript)**:
+```javascript
+const eventSource = new EventSource('http://<PI_IP>:8000/v1/system/logs/stream?level=ERROR');
+eventSource.onmessage = (event) => {
+  console.log('Log:', event.data);
+  // Update UI with new log entries
+};
+```
+
+**Response Format**:
+```json
+{
+  "logs": [
+    "Nov 23 17:41:20 picam pi-camera-service[21852]: 2025-11-23 17:41:20,623 - camera_service.api - INFO - === Pi Camera Service Starting ===",
+    "Nov 23 17:41:20 picam pi-camera-service[21852]: 2025-11-23 17:41:20,754 - camera_service.streaming_manager - INFO - Starting RTSP streaming to rtsp://127.0.0.1:8554/cam"
+  ],
+  "total_lines": 2,
+  "service": "pi-camera-service"
+}
+```
+
+**Use Cases**:
+- Remote debugging without SSH access
+- Monitor service health and errors in real-time
+- Build monitoring dashboards with live log feeds
+- Troubleshoot issues from web/mobile apps
+- Audit camera operations and configuration changes
 
 The video stream is published to MediaMTX, which then serves it via **RTSP / WebRTC / HLS**.
 

@@ -5,6 +5,120 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1] - 2025-11-23
+
+### Added
+
+#### System Logs API with Real-Time Streaming
+- **NEW FEATURE**: Remote access to service logs via HTTP API without requiring SSH access
+  - **Problem Solved**: Debugging and monitoring required SSH access to Raspberry Pi, limiting remote troubleshooting capabilities
+  - **Solution**: HTTP API endpoints for log retrieval with filtering and real-time streaming via Server-Sent Events (SSE)
+  - **Impact**: Full remote debugging and monitoring capabilities for production deployments
+
+#### New System Logs Endpoints
+
+**1. `GET /v1/system/logs` - Log Retrieval with Filtering**
+- Query recent logs (1-10,000 lines, default: 100)
+- Filter by log level: INFO, WARNING, ERROR
+- Search by keyword/pattern
+- Returns JSON with log lines, count, and service name
+- Examples:
+  - `?lines=50` - Get last 50 lines
+  - `?level=ERROR&lines=100` - Filter ERROR logs
+  - `?search=resolution&lines=200` - Search for pattern
+  - `?lines=500&level=ERROR&search=camera` - Combined filters
+
+**2. `GET /v1/system/logs/stream` - Real-Time Log Streaming (SSE)**
+- Server-Sent Events for continuous log monitoring
+- Same filtering capabilities as retrieval endpoint (level, search)
+- Auto-cleanup on client disconnect (no orphaned processes)
+- Perfect for live debugging dashboards
+- Examples:
+  - Stream all logs in real-time
+  - Stream only ERROR logs: `?level=ERROR`
+  - Stream logs matching pattern: `?search=camera`
+
+#### Implementation Details
+- Uses `journalctl` to read systemd service logs
+- No `sudo` required (service can read its own logs)
+- Async subprocess management using `asyncio.create_subprocess_exec`
+- Proper cleanup to prevent orphaned `journalctl` processes
+- Added `LogsResponse` Pydantic model for structured responses
+- Fixed `StreamingResponse` import conflict (renamed to `FastAPIStreamingResponse`)
+
+### Changed
+- API version bumped from 2.8.0 to 2.8.1
+- `camera_service/api.py`:
+  - Added `asyncio`, `subprocess` imports
+  - Added `Query` parameter support
+  - Renamed `StreamingResponse` import to avoid conflict with Pydantic model
+  - Added `LogsResponse` model
+  - Added two new system endpoints for logs
+
+### Benefits
+- **Remote Debugging**: Access logs from anywhere without SSH
+- **Real-Time Monitoring**: Build live monitoring dashboards
+- **Error Detection**: Filter and alert on ERROR logs instantly
+- **Audit Trail**: Track camera operations and configuration changes
+- **Client Integration**: Embed log viewers in web/mobile apps
+
+### Use Cases
+
+**1. Remote Debugging**:
+```bash
+# Get last 100 ERROR logs
+curl -H "X-API-Key: your-key" \
+  "http://<PI_IP>:8000/v1/system/logs?level=ERROR&lines=100"
+```
+
+**2. Live Log Monitoring (JavaScript)**:
+```javascript
+const eventSource = new EventSource('http://<PI_IP>:8000/v1/system/logs/stream?level=ERROR');
+eventSource.onmessage = (event) => {
+  console.log('New error:', event.data);
+  // Send alert, update UI, etc.
+};
+```
+
+**3. Search Configuration Changes**:
+```bash
+# Find all resolution changes
+curl -H "X-API-Key: your-key" \
+  "http://<PI_IP>:8000/v1/system/logs?search=resolution&lines=500"
+```
+
+**4. Monitor Service Health**:
+```python
+# Python script to monitor and alert on errors
+import requests
+
+url = "http://<PI_IP>:8000/v1/system/logs/stream"
+params = {"level": "ERROR"}
+headers = {"X-API-Key": "your-key"}
+
+with requests.get(url, headers=headers, params=params, stream=True) as response:
+    for line in response.iter_lines():
+        if line and line.startswith(b'data: '):
+            log_line = line[6:].decode('utf-8')
+            send_alert(log_line)  # Your alert function
+```
+
+### Documentation
+- Updated README.md with v2.8.1 feature announcement
+- Enhanced `docs/api-reference.md` with comprehensive logs endpoint documentation
+- Created `docs/examples.md` with practical use cases and integration examples
+- Created `pi-camera-api-collection.json` (Postman/Insomnia collection)
+
+### Technical Details
+- Zero breaking changes - all new endpoints are additions
+- Logs endpoint uses journalctl (standard on systemd systems)
+- SSE streaming uses async I/O for efficient resource usage
+- Proper subprocess cleanup on client disconnect
+- Works with or without API key authentication
+- Fully backwards compatible with existing clients
+
+---
+
 ## [2.8.0] - 2025-11-23
 
 ### Added

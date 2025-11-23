@@ -4,6 +4,8 @@ This document provides a complete reference for the Pi Camera Service HTTP API, 
 
 > **Note**: This document primarily covers v1.0 API endpoints. For comprehensive documentation of v2.0+ features (autofocus, snapshot, HDR, exposure value, noise reduction, capabilities, framerate control, FOV mode, etc.), see the main [README.md](../README.md).
 >
+> **New in v2.8.1**: System logs API with real-time streaming - documented below.
+>
 > **New in v2.4**: Field of View (FOV) mode selection - documented below.
 
 ## Overview
@@ -12,7 +14,7 @@ The Pi Camera Service is a REST API that controls a Raspberry Pi camera and stre
 
 **Base URL:** `http://<RASPBERRY_PI_IP>:8000`
 
-**API Version:** v2.4.0 (this document covers v1.0 core features + v2.4 FOV mode)
+**API Version:** v2.8.1 (this document covers v1.0 core features + v2.8.1 system logs)
 
 **Protocol:** HTTP/REST
 
@@ -1211,10 +1213,193 @@ if status['throttled'] and status['throttled']['has_occurred']:
 
 ---
 
+### GET /v1/system/logs
+
+Get service logs with optional filtering for remote debugging and monitoring.
+
+**New in v2.8.1** - Access service logs via HTTP API without requiring SSH access to the Raspberry Pi.
+
+**Authentication:** Required (if configured)
+
+**Query Parameters:**
+- `lines` (int, optional): Number of log lines to retrieve
+  - Range: 1-10000
+  - Default: 100
+- `level` (string, optional): Filter by log level
+  - Options: "INFO", "WARNING", "ERROR"
+  - Case-insensitive
+- `search` (string, optional): Search pattern to filter logs
+  - Matches any part of the log line
+
+**Response:**
+```json
+{
+  "logs": ["<log line 1>", "<log line 2>", "..."],
+  "total_lines": 100,
+  "service": "pi-camera-service"
+}
+```
+
+**Fields:**
+- `logs` (list[string]): Array of log lines from journalctl
+- `total_lines` (int): Number of lines returned after filtering
+- `service` (string): Service name (always "pi-camera-service")
+
+**Examples:**
+
+**Get last 50 log lines:**
+```bash
+curl -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs?lines=50"
+```
+
+**Filter ERROR level logs:**
+```bash
+curl -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs?level=ERROR&lines=100"
+```
+
+**Search for specific events:**
+```bash
+curl -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs?search=resolution&lines=200"
+```
+
+**Combined filters (ERROR logs containing "camera"):**
+```bash
+curl -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs?lines=500&level=ERROR&search=camera"
+```
+
+**Python Example:**
+```python
+import requests
+
+response = requests.get(
+    "http://<PI_IP>:8000/v1/system/logs",
+    params={"lines": 100, "level": "ERROR"},
+    headers={"X-API-Key": "your-key"}
+)
+logs = response.json()
+
+print(f"Found {logs['total_lines']} error logs:")
+for log_line in logs['logs']:
+    print(log_line)
+```
+
+**When to Use:**
+- Remote debugging without SSH access
+- Monitor service health and detect errors
+- Audit camera operations and configuration changes
+- Build monitoring dashboards
+- Troubleshoot issues from web/mobile applications
+
+---
+
+### GET /v1/system/logs/stream
+
+Stream service logs in real-time using Server-Sent Events (SSE).
+
+**New in v2.8.1** - Continuous log streaming for live debugging and monitoring dashboards.
+
+**Authentication:** Required (if configured)
+
+**Query Parameters:**
+- `level` (string, optional): Filter by log level (INFO, WARNING, ERROR)
+- `search` (string, optional): Search pattern to filter logs
+
+**Response Format:** Server-Sent Events (text/event-stream)
+
+Each log line is sent as an SSE event in the format:
+```
+data: <log line>
+
+```
+
+**Connection Management:**
+- The stream remains open until the client disconnects
+- Subprocess is automatically cleaned up on disconnect
+- No orphaned processes left behind
+
+**JavaScript Example (EventSource API):**
+```javascript
+// Connect to log stream
+const eventSource = new EventSource(
+  'http://<PI_IP>:8000/v1/system/logs/stream?level=ERROR',
+  {
+    headers: { 'X-API-Key': 'your-key' }  // Note: Some browsers don't support headers in EventSource
+  }
+);
+
+// Handle new log entries
+eventSource.onmessage = (event) => {
+  const logLine = event.data;
+  console.log('New log:', logLine);
+
+  // Update UI
+  document.getElementById('logs').innerHTML += `<div>${logLine}</div>`;
+};
+
+// Handle errors
+eventSource.onerror = (error) => {
+  console.error('Stream error:', error);
+  eventSource.close();
+};
+
+// Clean up when done
+// eventSource.close();
+```
+
+**Python Example (with requests):**
+```python
+import requests
+
+url = "http://<PI_IP>:8000/v1/system/logs/stream"
+headers = {"X-API-Key": "your-key"}
+params = {"level": "ERROR"}
+
+# Stream logs indefinitely
+with requests.get(url, headers=headers, params=params, stream=True) as response:
+    for line in response.iter_lines():
+        if line:
+            # SSE format: "data: <log line>"
+            if line.startswith(b'data: '):
+                log_line = line[6:].decode('utf-8')
+                print(f"[ERROR] {log_line}")
+```
+
+**curl Example (stream to terminal):**
+```bash
+# Stream all logs
+curl -N -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs/stream"
+
+# Stream only ERROR logs
+curl -N -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs/stream?level=ERROR"
+
+# Stream logs matching pattern
+curl -N -H "X-API-Key: your-key" "http://<PI_IP>:8000/v1/system/logs/stream?search=camera"
+```
+
+**When to Use:**
+- Build live monitoring dashboards
+- Real-time error detection and alerting
+- Debug issues as they occur
+- Monitor production deployments
+- Create custom log viewers in web/mobile apps
+
+**Important Notes:**
+- Uses Server-Sent Events (SSE), not WebSockets
+- EventSource API has limited browser support for custom headers
+  - For authentication, consider using query parameter or cookie-based auth
+  - Or use fetch() with ReadableStream for better header support
+- The stream only shows new logs (not historical logs)
+  - Use `/v1/system/logs` first to get recent history
+  - Then connect to `/stream` for new entries
+
+---
+
 ## Support
 
 For issues or questions:
-- Check service logs: `sudo journalctl -u pi-camera-service -f`
-- Verify service status: `sudo systemctl status pi-camera-service`
-- Test connectivity: `curl http://<PI_IP>:8000/health`
-- See `SERVICE-SETUP.md` for troubleshooting
+- **View logs via API:** `GET /v1/system/logs?lines=100&level=ERROR`
+- **Stream logs in real-time:** `GET /v1/system/logs/stream`
+- **Check service logs (SSH):** `sudo journalctl -u pi-camera-service -f`
+- **Verify service status:** `sudo systemctl status pi-camera-service`
+- **Test connectivity:** `curl http://<PI_IP>:8000/health`
+- **See documentation:** [docs/installation.md](installation.md) for troubleshooting

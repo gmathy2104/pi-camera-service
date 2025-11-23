@@ -1,0 +1,392 @@
+{
+	"info": {
+		"_postman_id": "pi-camera-service-collection",
+		"name": "Pi Camera Service API",
+		"description": "Complete API collection for Pi Camera Service v2.8.1\n\nIncludes all endpoints for camera control, streaming, system monitoring, and logs.\n\n**Setup:**\n1. Set environment variable `base_url` to your Pi's IP (e.g., `http://192.168.1.100:8000`)\n2. Set environment variable `api_key` to your API key (if authentication is enabled)\n\n**Documentation:**\n- [README](https://github.com/gmathy2104/pi-camera-service/blob/main/README.md)\n- [API Reference](https://github.com/gmathy2104/pi-camera-service/blob/main/docs/api-reference.md)\n- [Examples](https://github.com/gmathy2104/pi-camera-service/blob/main/docs/examples.md)",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://192.168.1.100:8000",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "your-secret-key",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "System",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/health",
+							"host": ["{{base_url}}"],
+							"path": ["health"]
+						},
+						"description": "Check if the service is healthy. Does not require authentication."
+					}
+				},
+				{
+					"name": "System Status",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/system/status",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "system", "status"]
+						},
+						"description": "Get comprehensive system status including CPU temperature, memory, network, and disk usage."
+					}
+				},
+				{
+					"name": "Get System Logs",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/system/logs?lines=100",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "system", "logs"],
+							"query": [
+								{"key": "lines", "value": "100", "description": "Number of log lines (1-10000)"},
+								{"key": "level", "value": "", "description": "Filter by level (INFO, WARNING, ERROR)", "disabled": true},
+								{"key": "search", "value": "", "description": "Search pattern", "disabled": true}
+							]
+						},
+						"description": "**NEW in v2.8.1**\n\nGet service logs with optional filtering.\n\n**Query Parameters:**\n- `lines`: Number of lines (1-10000, default: 100)\n- `level`: Filter by log level (INFO, WARNING, ERROR)\n- `search`: Search for specific pattern"
+					}
+				},
+				{
+					"name": "Get Error Logs",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/system/logs?lines=100&level=ERROR",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "system", "logs"],
+							"query": [
+								{"key": "lines", "value": "100"},
+								{"key": "level", "value": "ERROR"}
+							]
+						},
+						"description": "Get only ERROR level logs."
+					}
+				},
+				{
+					"name": "Search Logs",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/system/logs?lines=200&search=resolution",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "system", "logs"],
+							"query": [
+								{"key": "lines", "value": "200"},
+								{"key": "search", "value": "resolution"}
+							]
+						},
+						"description": "Search for 'resolution' in logs."
+					}
+				},
+				{
+					"name": "Stream Logs (SSE)",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/system/logs/stream",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "system", "logs", "stream"],
+							"query": [
+								{"key": "level", "value": "", "description": "Filter by level", "disabled": true},
+								{"key": "search", "value": "", "description": "Search pattern", "disabled": true}
+							]
+						},
+						"description": "**NEW in v2.8.1**\n\nStream logs in real-time using Server-Sent Events.\n\n**Note:** For testing in Postman/Insomnia, the connection will stay open. Use curl or EventSource API for production.\n\n**curl example:**\n```bash\ncurl -N -H \"X-API-Key: your-key\" \"http://192.168.1.100:8000/v1/system/logs/stream\"\n```"
+					}
+				}
+			],
+			"description": "System monitoring endpoints including health checks, system status, and logs (v2.8.1)"
+		},
+		{
+			"name": "Camera Status & Capabilities",
+			"item": [
+				{
+					"name": "Get Camera Status",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/camera/status",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "status"]
+						},
+						"description": "Get current camera status including exposure, gain, temperature, and all configuration."
+					}
+				},
+				{
+					"name": "Get Camera Capabilities",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/camera/capabilities",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "capabilities"]
+						},
+						"description": "Get camera hardware capabilities, supported resolutions, and features."
+					}
+				}
+			]
+		},
+		{
+			"name": "Streaming Control",
+			"item": [
+				{
+					"name": "Start Streaming",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/streaming/start",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "streaming", "start"]
+						},
+						"description": "Start H.264 RTSP streaming to MediaMTX."
+					}
+				},
+				{
+					"name": "Stop Streaming",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/v1/streaming/stop",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "streaming", "stop"]
+						},
+						"description": "Stop H.264 RTSP streaming."
+					}
+				}
+			]
+		},
+		{
+			"name": "Camera Configuration",
+			"item": [
+				{
+					"name": "Set Resolution",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"width\": 1920,\n  \"height\": 1080,\n  \"restart_streaming\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/camera/resolution",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "resolution"]
+						},
+						"description": "Change camera resolution (e.g., 1920x1080, 1280x720, 3840x2160)."
+					}
+				},
+				{
+					"name": "Set Framerate",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"framerate\": 30,\n  \"restart_streaming\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/camera/framerate",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "framerate"]
+						},
+						"description": "Change camera framerate with intelligent clamping."
+					}
+				},
+				{
+					"name": "Enable Auto Exposure",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"enabled\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/camera/auto_exposure",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "auto_exposure"]
+						},
+						"description": "Enable or disable automatic exposure control."
+					}
+				},
+				{
+					"name": "Set Manual Exposure",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"exposure_us\": 10000,\n  \"gain\": 2.0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/camera/manual_exposure",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "manual_exposure"]
+						},
+						"description": "Set manual exposure time (µs) and gain."
+					}
+				}
+			]
+		},
+		{
+			"name": "Image Capture",
+			"item": [
+				{
+					"name": "Capture Snapshot",
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{"key": "key", "value": "X-API-Key", "type": "string"},
+								{"key": "value", "value": "{{api_key}}", "type": "string"},
+								{"key": "in", "value": "header", "type": "string"}
+							]
+						},
+						"method": "POST",
+						"header": [{"key": "Content-Type", "value": "application/json"}],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"width\": 1920,\n  \"height\": 1080,\n  \"autofocus_trigger\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/v1/camera/snapshot",
+							"host": ["{{base_url}}"],
+							"path": ["v1", "camera", "snapshot"]
+						},
+						"description": "Capture a JPEG snapshot without stopping streaming. Returns base64-encoded image."
+					}
+				}
+			]
+		}
+	]
+}
