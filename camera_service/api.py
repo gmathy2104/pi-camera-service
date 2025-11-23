@@ -7,12 +7,15 @@ white balance, and RTSP streaming to MediaMTX.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import subprocess
 from contextlib import asynccontextmanager
 from threading import RLock
 from typing import Annotated, AsyncGenerator, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Security, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Security, status
+from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
@@ -192,7 +195,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="Pi Camera Service",
     description="API for controlling Raspberry Pi camera and streaming to MediaMTX via RTSP",
-    version="2.5.0",
+    version="2.8.1",
     lifespan=lifespan,
 )
 
@@ -489,6 +492,13 @@ class SystemStatusResponse(BaseModel):
     throttled: Optional[dict] = Field(None, description="Throttling status (Pi-specific)")
 
 
+class LogsResponse(BaseModel):
+    """Logs response model."""
+    logs: list[str] = Field(..., description="Log lines")
+    total_lines: int = Field(..., description="Total number of lines returned")
+    service: str = Field("pi-camera-service", description="Service name")
+
+
 # ========== Exception Handlers ==========
 
 @app.exception_handler(InvalidParameterError)
@@ -548,7 +558,7 @@ def health_check() -> HealthResponse:
         status="healthy" if camera_controller is not None else "initializing",
         camera_configured=camera_controller._configured if camera_controller else False,
         streaming_active=streaming_manager.is_streaming() if streaming_manager else False,
-        version="2.5.0",
+        version="2.8.1",
     )
 
 
@@ -1981,3 +1991,200 @@ def get_system_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get system status",
         )
+
+
+@app.get(
+    "/v1/system/logs",
+    response_model=LogsResponse,
+    summary="Get service logs",
+    description="Get logs from the pi-camera-service with optional filtering by lines, level, and search pattern",
+    tags=["System"],
+)
+def get_system_logs(
+    lines: Annotated[int, Query(ge=1, le=10000, description="Number of log lines to retrieve")] = 100,
+    level: Annotated[Optional[str], Query(description="Filter by log level (INFO, WARNING, ERROR)")] = None,
+    search: Annotated[Optional[str], Query(description="Search pattern to filter logs")] = None,
+    _: Annotated[None, Depends(verify_api_key)] = None,
+) -> LogsResponse:
+    """
+    Get service logs with optional filtering.
+
+    Retrieves logs from the pi-camera-service systemd service using journalctl.
+
+    Query Parameters:
+    - lines: Number of log lines to retrieve (1-10000, default: 100)
+    - level: Filter by log level (INFO, WARNING, ERROR)
+    - search: Search for specific pattern in logs
+
+    Examples:
+    - /v1/system/logs?lines=50 - Get last 50 log lines
+    - /v1/system/logs?level=ERROR - Get only ERROR level logs
+    - /v1/system/logs?search=resolution - Search for "resolution" in logs
+    - /v1/system/logs?lines=200&level=ERROR&search=camera - Combined filters
+
+    Returns:
+        LogsResponse: Log lines and metadata
+
+    Raises:
+        HTTPException: If log retrieval fails
+    """
+    logger.debug(f"Getting system logs: lines={lines}, level={level}, search={search}")
+
+    try:
+        # Build journalctl command (no sudo needed - journalctl allows reading own service logs)
+        cmd = ["journalctl", "-u", "pi-camera-service", "-n", str(lines), "--no-pager"]
+
+        # Execute journalctl
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve logs: {result.stderr}",
+            )
+
+        # Split logs into lines
+        log_lines = result.stdout.strip().split('\n') if result.stdout else []
+
+        # Apply level filter if specified
+        if level:
+            level_upper = level.upper()
+            log_lines = [line for line in log_lines if level_upper in line]
+
+        # Apply search filter if specified
+        if search:
+            log_lines = [line for line in log_lines if search in line]
+
+        return LogsResponse(
+            logs=log_lines,
+            total_lines=len(log_lines),
+            service="pi-camera-service"
+        )
+
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout while retrieving logs")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Log retrieval timed out",
+        )
+    except Exception as e:
+        logger.error(f"Error getting system logs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve logs: {str(e)}",
+        )
+
+
+@app.get(
+    "/v1/system/logs/stream",
+    summary="Stream service logs in real-time",
+    description="Stream logs from the pi-camera-service in real-time using Server-Sent Events (SSE)",
+    tags=["System"],
+)
+async def stream_system_logs(
+    level: Annotated[Optional[str], Query(description="Filter by log level (INFO, WARNING, ERROR)")] = None,
+    search: Annotated[Optional[str], Query(description="Search pattern to filter logs")] = None,
+    _: Annotated[None, Depends(verify_api_key)] = None,
+):
+    """
+    Stream service logs in real-time using Server-Sent Events (SSE).
+
+    This endpoint provides a continuous stream of log entries as they are generated.
+    The connection will remain open until the client disconnects.
+
+    Query Parameters:
+    - level: Filter by log level (INFO, WARNING, ERROR)
+    - search: Search for specific pattern in logs
+
+    Usage:
+    - Use EventSource in JavaScript or SSE client libraries
+    - Each event contains a single log line
+    - Connection stays open for continuous streaming
+
+    Example (JavaScript):
+    ```javascript
+    const eventSource = new EventSource('/v1/system/logs/stream?level=ERROR');
+    eventSource.onmessage = (event) => {
+        console.log('Log:', event.data);
+    };
+    ```
+
+    Returns:
+        StreamingResponse: SSE stream of log entries
+
+    Raises:
+        HTTPException: If log streaming fails
+    """
+    logger.debug(f"Starting log stream: level={level}, search={search}")
+
+    async def log_generator():
+        """Generate log events as they arrive."""
+        process = None
+        try:
+            # Start journalctl in follow mode (no sudo needed - journalctl allows reading own service logs)
+            cmd = ["journalctl", "-u", "pi-camera-service", "-f", "--no-pager", "-n", "0"]
+
+            # Use asyncio subprocess for non-blocking I/O
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            # Read lines as they arrive
+            while True:
+                # Read line asynchronously
+                line_bytes = await process.stdout.readline()
+
+                if not line_bytes:
+                    # Process ended
+                    break
+
+                line = line_bytes.decode('utf-8').strip()
+
+                if not line:
+                    continue
+
+                # Apply level filter if specified
+                if level and level.upper() not in line:
+                    continue
+
+                # Apply search filter if specified
+                if search and search not in line:
+                    continue
+
+                # Send as SSE event
+                yield f"data: {line}\n\n"
+
+        except asyncio.CancelledError:
+            # Client disconnected
+            logger.debug("Log stream cancelled by client")
+        except Exception as e:
+            logger.error(f"Error in log stream: {e}")
+            yield f"data: ERROR: {str(e)}\n\n"
+        finally:
+            # Clean up process
+            if process:
+                try:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
+                except Exception as e:
+                    logger.error(f"Error cleaning up log stream process: {e}")
+
+    return FastAPIStreamingResponse(
+        log_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
