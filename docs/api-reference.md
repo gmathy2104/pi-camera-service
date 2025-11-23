@@ -164,6 +164,10 @@ Get current camera status including exposure settings, gain, brightness, and str
 - `colour_temperature` (float|null): Estimated color temperature in Kelvin
 - `auto_exposure` (bool): Whether auto exposure is enabled
 - `streaming` (bool): Whether RTSP streaming is active
+- `exposure_value` (float|null): Current EV compensation (-8.0 to +8.0, default: 0.0) **[v2.8+]**
+- `noise_reduction_mode` (str|null): Current noise reduction mode (off/fast/high_quality/minimal/zsl, default: off) **[v2.8+]**
+- `ae_constraint_mode` (str|null): Current AE constraint mode (normal/highlight/shadows/custom, default: normal) **[v2.8+]**
+- `ae_exposure_mode` (str|null): Current AE exposure mode (normal/short/long/custom, default: normal) **[v2.8+]**
 
 **Example:**
 ```bash

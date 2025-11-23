@@ -2,15 +2,17 @@
 
 Production-ready **FastAPI** microservice for controlling Raspberry Pi Camera (libcamera/Picamera2) with **H.264 streaming** to **MediaMTX** via RTSP.
 
-**Version 2.7.0** - Wide-angle camera support preserves 120° field of view!
+**Version 2.8.0** - Camera configuration transparency with advanced controls status tracking!
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
+[![Version](https://img.shields.io/badge/version-2.8.0-blue.svg)](https://github.com/gmathy2104/pi-camera-service/releases)
 [![Python](https://img.shields.io/badge/python-3.9+-green.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.121+-teal.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 [![Tests](https://github.com/gmathy2104/pi-camera-service/workflows/Tests/badge.svg)](https://github.com/gmathy2104/pi-camera-service/actions)
 
-> 🔥 **New in v2.7.0**: **Wide-Angle Camera Detection** - Automatic detection of Camera Module 3 Wide (120° FOV). Intelligent sensor mode selection preserves full wide-angle field of view at all resolutions. New API fields expose camera type, sensor modes, and recommended resolutions!
+> 🔥 **New in v2.8.0**: **Advanced Controls Status Tracking** - Camera status endpoint now exposes all advanced control settings in real-time (EV compensation, noise reduction mode, AE constraint/exposure modes). Perfect for debugging and monitoring camera configuration!
+>
+> 🔥 **v2.7.0**: **Wide-Angle Camera Detection** - Automatic detection of Camera Module 3 Wide (120° FOV). Intelligent sensor mode selection preserves full wide-angle field of view at all resolutions. New API fields expose camera type, sensor modes, and recommended resolutions!
 >
 > 🔥 **v2.6.1**: **Intelligent Bitrate Auto-Selection** - Automatic bitrate calculation prevents corrupted macroblock errors. Bitrate now adapts to resolution×framerate (12 Mbps @ 720p/60fps, 25 Mbps @ 1080p/60fps). Visible in status endpoint!
 >
@@ -511,7 +513,7 @@ sudo journalctl -u pi-camera-service -f
 }
 ```
 
-### Camera Status (Enhanced in v2.0, v2.2, v2.7)
+### Camera Status (Enhanced in v2.0, v2.2, v2.7, v2.8)
 
 **GET** `/v1/camera/status`
 ```json
@@ -548,7 +550,13 @@ sudo journalctl -u pi-camera-service -f
   // New v2.7 fields (wide-angle camera support)
   "is_wide_camera": true,
   "sensor_mode_width": 2304,
-  "sensor_mode_height": 1296
+  "sensor_mode_height": 1296,
+
+  // New v2.8 fields (advanced controls tracking)
+  "exposure_value": 0.0,
+  "noise_reduction_mode": "off",
+  "ae_constraint_mode": "normal",
+  "ae_exposure_mode": "normal"
 }
 ```
 

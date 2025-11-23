@@ -5,6 +5,69 @@ All notable changes to Pi Camera Service will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2025-11-23
+
+### Added
+
+#### Advanced Camera Controls Status Tracking
+- **NEW FEATURE**: Camera status endpoint now includes current advanced control settings
+  - **Problem Solved**: Clients couldn't verify which camera settings were active, leading to configuration confusion
+  - **Solution**: Track and expose all advanced control values in real-time via `/v1/camera/status`
+  - **Impact**: Full transparency of camera configuration for debugging and monitoring
+
+#### New Status API Fields
+**Enhanced `GET /v1/camera/status` Response** with 4 new fields:
+- `exposure_value`: Current EV compensation value (-8.0 to +8.0, default: 0.0)
+- `noise_reduction_mode`: Current noise reduction mode (off/fast/high_quality/minimal/zsl, default: off)
+- `ae_constraint_mode`: Current auto-exposure constraint mode (normal/highlight/shadows/custom, default: normal)
+- `ae_exposure_mode`: Current auto-exposure mode (normal/short/long/custom, default: normal)
+
+All fields include default values and are updated in real-time when camera settings are changed.
+
+### Changed
+- `CameraController.__init__()`: Added instance variables to track advanced control values
+- `CameraController.set_exposure_value()`: Now stores value in `_exposure_value`
+- `CameraController.set_noise_reduction_mode()`: Now stores value in `_noise_reduction_mode`
+- `CameraController.set_ae_constraint_mode()`: Now stores value in `_ae_constraint_mode`
+- `CameraController.set_ae_exposure_mode()`: Now stores value in `_ae_exposure_mode`
+- `CameraController.get_status()`: Returns advanced control values in status dict
+- `CameraStatusResponse` model: Added 4 new optional fields for advanced controls
+- Status endpoint handler: Now populates advanced control fields from camera status
+
+### Benefits
+- **Debugging**: Instantly verify which low-light/motion mode is active
+- **Client UIs**: Display current camera configuration to users
+- **Monitoring**: Track camera settings over time for diagnostics
+- **Integration**: Clients can adapt behavior based on current camera mode
+
+### Use Cases
+
+**Verify Low-Light Mode is Active**:
+```bash
+curl http://localhost:8000/v1/camera/status | jq '{
+  exposure_value,
+  noise_reduction_mode,
+  ae_constraint_mode,
+  ae_exposure_mode
+}'
+```
+
+**Expected output after `./scripts/set-low-light-mode.sh`**:
+```json
+{
+  "exposure_value": 1.5,
+  "noise_reduction_mode": "high_quality",
+  "ae_constraint_mode": "shadows",
+  "ae_exposure_mode": "long"
+}
+```
+
+### Technical Details
+- Zero breaking changes - all new fields are optional
+- Default values set in `__init__`: EV=0.0, Noise=off, AE_constraint=normal, AE_exposure=normal
+- Values persist for lifetime of `CameraController` instance
+- Fully backwards compatible with existing clients
+
 ## [2.7.0] - 2025-11-23
 
 ### Added

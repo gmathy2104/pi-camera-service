@@ -265,6 +265,12 @@ class CameraStatusResponse(BaseModel):
     # Current limits (v2.2)
     current_limits: dict | None = Field(None, description="Currently applied exposure/frame duration limits")
 
+    # Advanced controls (v2.1) - current values
+    exposure_value: float | None = Field(None, description="Current EV compensation (-8.0 to +8.0)")
+    noise_reduction_mode: str | None = Field(None, description="Current noise reduction mode")
+    ae_constraint_mode: str | None = Field(None, description="Current AE constraint mode")
+    ae_exposure_mode: str | None = Field(None, description="Current AE exposure mode")
+
 
 class CameraCapabilitiesResponse(BaseModel):
     """Camera capabilities response model with hardware limits and features."""
@@ -605,6 +611,12 @@ def get_camera_status(
 
             # Current limits (v2.2)
             current_limits=status_data.get("current_limits"),
+
+            # Advanced controls (v2.1) - current values
+            exposure_value=status_data.get("exposure_value"),
+            noise_reduction_mode=status_data.get("noise_reduction_mode"),
+            ae_constraint_mode=status_data.get("ae_constraint_mode"),
+            ae_exposure_mode=status_data.get("ae_exposure_mode"),
         )
     except CameraNotAvailableError:
         raise

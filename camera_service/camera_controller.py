@@ -173,6 +173,12 @@ class CameraController:
         # Field of view mode: "scale" (constant FOV) or "crop" (digital zoom)
         self._fov_mode = "scale"  # Default to scale for consistent FOV
 
+        # Advanced control settings (v2.1) - track current values
+        self._exposure_value = 0.0  # EV compensation (default: no adjustment)
+        self._noise_reduction_mode = "off"  # Default: noise reduction off
+        self._ae_constraint_mode = "normal"  # Default: normal constraint
+        self._ae_exposure_mode = "normal"  # Default: normal exposure
+
         # Detect wide-angle camera for optimal sensor mode selection (v2.7.0)
         self._is_wide_camera = self._detect_wide_camera()
 
@@ -706,6 +712,12 @@ class CameraController:
 
                     # Current limits (v2.2)
                     "current_limits": current_limits,
+
+                    # Advanced control settings (v2.1) - current values
+                    "exposure_value": self._exposure_value,
+                    "noise_reduction_mode": self._noise_reduction_mode,
+                    "ae_constraint_mode": self._ae_constraint_mode,
+                    "ae_exposure_mode": self._ae_exposure_mode,
                 }
                 logger.debug(f"Camera status built: autofocus_mode={status['autofocus_mode']}, hdr_mode={status['hdr_mode']}")
                 return status
@@ -1419,6 +1431,7 @@ class CameraController:
                 raise CameraNotAvailableError("Camera not initialized")
 
             self._picam2.set_controls({"ExposureValue": ev})
+            self._exposure_value = ev  # Track current value
             logger.info(f"Exposure value compensation set to: {ev}")
 
     def set_noise_reduction_mode(self, mode: str) -> None:
@@ -1459,6 +1472,7 @@ class CameraController:
             }
 
             self._picam2.set_controls({"NoiseReductionMode": mode_map[mode]})
+            self._noise_reduction_mode = mode  # Track current value
             logger.info(f"Noise reduction mode set to: {mode}")
 
     def set_ae_constraint_mode(self, mode: str) -> None:
@@ -1499,6 +1513,7 @@ class CameraController:
             }
 
             self._picam2.set_controls({"AeConstraintMode": mode_map[mode]})
+            self._ae_constraint_mode = mode  # Track current value
             logger.info(f"AE constraint mode set to: {mode}")
 
     def set_ae_exposure_mode(self, mode: str) -> None:
@@ -1538,6 +1553,7 @@ class CameraController:
             }
 
             self._picam2.set_controls({"AeExposureMode": mode_map[mode]})
+            self._ae_exposure_mode = mode  # Track current value
             logger.info(f"AE exposure mode set to: {mode}")
 
     def set_awb_mode(self, mode: str) -> None:
